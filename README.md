@@ -20,6 +20,44 @@ Developed at Oak Ridge National Laboratory (ORNL).
 
 ---
 
+## How it works
+
+### Structural monitoring — lattice parameter, streak width & coherence length
+
+![Auto RHEED analysis pipeline: frame viewer, streak profile, d(t), and FWHM/coherence panels](docs/analysis-pipeline.png)
+
+The analysis proceeds in four stages: **(a)** raw-data ingestion, **(b)** a synchronized
+frame viewer and playback timeline, **(c–d)** a single geometric calibration, and per-frame
+structural measurement. On the first bare-substrate frame the user marks a known substrate
+reflection; the measured streak separation Δx fixes the pixel-to-reciprocal-space scale
+through the small-angle RHEED relation `d = λL/Δx` (here SrTiO₃ along [110]). A strip ROI
+spanning the specular spot and the two first-order streaks is summed column-wise into a 1-D
+profile **(d)**; a slowly varying background is removed (asymmetric least squares shown), and
+the specular and ±1 peaks are detected and refined to sub-pixel precision. Averaging the two
+specular-to-first-order distances gives Δx per frame, converted to the in-plane lattice
+parameter **d(t)** **(e)** — resolving monolayer-periodic oscillations on a slow relaxation
+toward the substrate value. From the same profiles, the specular streak's **FWHM** and the
+derived in-plane **coherence length L** are tracked every frame **(f)**, reporting the periodic
+sharpening and broadening of the diffraction features as each layer nucleates and coalesces.
+
+### Kinetic monitoring — intensity oscillations & growth rate
+
+![Auto RHEED growth-rate analysis: two ROIs, intensity-vs-time transients, and FFT spectrum](docs/growth-rate-fft.png)
+
+The diffracted intensity itself carries the most direct signature of layer-by-layer growth.
+**(a)** Rectangular ROIs are placed on distinct diffraction features (specular spot and an
+adjacent streak) and integrated frame-by-frame. **(b)** The resulting intensity transients are
+plotted as time-synchronized panels — both showing pronounced periodic oscillations on a slow
+decay — since one full oscillation corresponds to the completion of a single atomic layer.
+**(c)** A discrete Fourier transform of each transient (after an EMA detrend) yields a sharp
+fundamental at `f₀` that is directly the growth rate (ML/s); combined with the out-of-plane
+interlayer spacing from the substrate calibration it gives an absolute deposition rate (Å/s).
+A separate FFT window can be opened per ROI to compare rates from different features.
+
+*(These correspond to Figures 3 and 4 of the associated manuscript.)*
+
+---
+
 ## Installation
 
 Requires **Python ≥ 3.10**. From the project root:
