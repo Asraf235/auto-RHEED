@@ -37,3 +37,8 @@ Thumbs.db
 *.docx
 *.pptx
 *.pdf
+
+# Notebooks are ignored by default, except the curated ones under notebooks/
+*.ipynb
+!notebooks/
+!notebooks/**/*.ipynb
