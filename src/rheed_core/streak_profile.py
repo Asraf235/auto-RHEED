@@ -205,6 +205,24 @@ def _subpixel_refine(subtracted: np.ndarray, idx: int) -> float:
     return float(idx) + offset
 
 
+def peak_intensity(subtracted: np.ndarray, position: Optional[float]) -> Optional[float]:
+    """Sample a background-subtracted peak height at its tracked position.
+
+    Peak locations are refined to subpixel coordinates, so linear
+    interpolation avoids snapping the reported intensity back to a different
+    whole-pixel sample. ``None`` is preserved when that peak was not found.
+    """
+    if position is None:
+        return None
+    profile = np.asarray(subtracted, dtype=float)
+    if profile.ndim != 1 or profile.size == 0 or not np.isfinite(position):
+        return None
+    if position < 0 or position > profile.size - 1:
+        return None
+    value = float(np.interp(position, np.arange(profile.size, dtype=float), profile))
+    return value if np.isfinite(value) else None
+
+
 def find_three_peaks(subtracted: np.ndarray, prev: Optional[StreakPeaks] = None,
                       search_window: int = 20, min_prominence_frac: float = 0.05,
                       min_signal_frac: float = 0.05, min_peak_gap: int = 4) -> StreakPeaks:

@@ -15,9 +15,22 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+~$*.xlsx
 
 # Logs
 *.log
+
+# Local persistent application/model data
+rheed_library/
+data/
+.auto_rheed_settings.json
+.test-output/
+rheed_models/*.pt
+rheed_models/*.pth
+rheed_models/*.onnx
+rheed_models/*.engine
+rheed_models/*.safetensors
+rheed_models/*.bin
 
 # Large data & media
 *.h5

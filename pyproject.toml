@@ -13,8 +13,42 @@ dependencies = [
     "h5py",
     "scipy",
     "flask",
-    "mcp",
+    "mcp>=1,<2",
+    "requests",
 ]
+
+[project.optional-dependencies]
+ai = [
+    "scikit-learn>=1.4,<2",
+]
+dinov3 = [
+    "scikit-learn>=1.4,<2",
+    "torch>=2.2,<3",
+    "transformers>=4.56,<6",
+]
+yolo = [
+    "lap>=0.5.12,<1",
+    "scikit-learn>=1.4,<2",
+    "ultralytics>=8.3,<9",
+]
+ai-all = [
+    "lap>=0.5.12,<1",
+    "scikit-learn>=1.4,<2",
+    "torch>=2.2,<3",
+    "transformers>=4.56,<6",
+    "ultralytics>=8.3,<9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.data-files]
+"THIRD_PARTY_LICENSES" = ["THIRD_PARTY_LICENSES/*.txt"]

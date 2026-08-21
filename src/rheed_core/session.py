@@ -24,15 +24,44 @@ from .calibration import Point, calibrate as _calibrate
 from . import streak_profile as _sp
 
 
-def frame_to_png_bytes(frame: np.ndarray, clim, colormap: str = "gray") -> bytes:
+def frame_to_display_uint8(frame: np.ndarray, clim, colormap: str = "gray") -> np.ndarray:
+    """Apply display contrast/colormap and return an encodable 8-bit image."""
     lo, hi = clim
     arr = np.clip(frame.astype(np.float32), lo, hi)
     arr = ((arr - lo) / max(hi - lo, 1) * 255).astype(np.uint8)
     cmap_id = CV2_CMAPS.get(colormap)
     if cmap_id is not None:
         arr = cv2.applyColorMap(arr, cmap_id)  # → BGR uint8
-    _, buf = cv2.imencode(".png", arr)
+    return arr
+
+
+def frame_to_image_bytes(
+    frame: np.ndarray,
+    clim,
+    colormap: str = "gray",
+    *,
+    encoding: str = "png",
+    jpeg_quality: int = 90,
+) -> bytes:
+    """Encode a display frame as lossless PNG or fast playback JPEG."""
+    arr = frame_to_display_uint8(frame, clim, colormap)
+    if encoding == "jpeg":
+        ok, buf = cv2.imencode(
+            ".jpg",
+            arr,
+            [cv2.IMWRITE_JPEG_QUALITY, max(60, min(int(jpeg_quality), 100))],
+        )
+    elif encoding == "png":
+        ok, buf = cv2.imencode(".png", arr)
+    else:
+        raise ValueError("encoding must be 'png' or 'jpeg'")
+    if not ok:
+        raise RuntimeError(f"Could not encode frame as {encoding}")
     return buf.tobytes()
+
+
+def frame_to_png_bytes(frame: np.ndarray, clim, colormap: str = "gray") -> bytes:
+    return frame_to_image_bytes(frame, clim, colormap, encoding="png")
 
 
 def frame_to_png_b64(frame: np.ndarray, clim, colormap: str = "gray") -> str:
@@ -50,6 +79,10 @@ class RheedSession:
         self.clim = (0, 65535)
         self.clim_auto = (0, 65535)
         self.colormap = "gray"
+        # Monotonic identity for results tied to native pixel data. Loading
+        # or rotating replaces the coordinate system and invalidates cached
+        # calibration, ROI, streak, and AI inference results.
+        self.dataset_version = 0
 
     # ── loading ──────────────────────────────────────────────────────
     def load_file(self, path: str, suffix: str) -> dict:
@@ -88,6 +121,7 @@ class RheedSession:
         # the backend keeps rendering with whatever colormap was set for
         # the PREVIOUS file, and the two visibly disagree.
         self.colormap = "gray"
+        self.dataset_version += 1
 
     def summary(self) -> dict:
         H, W = self.shape
@@ -147,6 +181,30 @@ class RheedSession:
         t = float(self.timestamps[idx]) if self.timestamps is not None else idx
         return b64, round(t, 4)
 
+    def frame_image_bytes(
+        self,
+        idx: int,
+        *,
+        auto_contrast: bool = False,
+        encoding: str = "jpeg",
+        jpeg_quality: int = 90,
+    ):
+        """Binary frame response used by the latency-sensitive browser player."""
+        frames = self.require_frames()
+        idx = max(0, min(idx, self.n_frames - 1))
+        clim = self.clim_auto_for_frame(idx) if auto_contrast else self.clim
+        if auto_contrast:
+            self.clim = clim
+        payload = frame_to_image_bytes(
+            frames[idx],
+            clim,
+            self.colormap,
+            encoding=encoding,
+            jpeg_quality=jpeg_quality,
+        )
+        timestamp = float(self.timestamps[idx]) if self.timestamps is not None else idx
+        return payload, round(timestamp, 4), clim
+
     def mean_frame_png_b64(self):
         frames = self.require_frames()
         n_use = min(len(frames), 100)
@@ -186,6 +244,7 @@ class RheedSession:
         k = -1 if direction == "cw" else 1  # np.rot90 k=1 is counter-clockwise
         self.frames = np.rot90(frames, k=k, axes=(1, 2)).copy()
         self.shape = self.frames.shape[1], self.frames.shape[2]
+        self.dataset_version += 1
         return self.shape
 
     def set_clim(self, lo: int, hi: int):
@@ -533,6 +592,13 @@ class RheedSession:
         specular_x, left_x, right_x = [], [], []
         avg_dx_list, d_list = [], []
         fwhm_half_list, fwhm_gauss_list = [], []
+        left_fwhm_half_list, right_fwhm_half_list = [], []
+        first_order_fwhm_half_list = []
+        left_fwhm_gauss_list, right_fwhm_gauss_list = [], []
+        first_order_fwhm_gauss_list = []
+        specular_intensity_list = []
+        left_intensity_list, right_intensity_list = [], []
+        first_order_intensity_list = []
         lost_frames = 0
 
         for frame in frames:
@@ -568,18 +634,70 @@ class RheedSession:
                 d_list.append(None)
                 lost_frames += 1
 
-            # Specular-streak width, both ways: a raw half-max read-off and
-            # a Gaussian fit (kSA-style). The frontend converts whichever
-            # the user selects into a coherence length via the SAME
-            # λL/(width·s) relation used for d-spacing (the streak WIDTH in
-            # place of the streak SEPARATION → 1/Δk = coherence length).
-            fwhm_half_list.append(_sp.fwhm_of_peak(subtracted, peaks.specular_x))
-            fwhm_gauss_list.append(_sp.fwhm_gauss_of_peak(subtracted, peaks.specular_x))
+            # Measure the specular and both nearest first-order streaks by
+            # both supported methods. Keep the two first-order sides in the
+            # result for provenance, and provide their available-side mean
+            # for plotting. Coherence length remains derived from the
+            # specular width in the frontend.
+            specular_fwhm_half = _sp.fwhm_of_peak(subtracted, peaks.specular_x)
+            left_fwhm_half = _sp.fwhm_of_peak(subtracted, peaks.left_x)
+            right_fwhm_half = _sp.fwhm_of_peak(subtracted, peaks.right_x)
+            specular_fwhm_gauss = _sp.fwhm_gauss_of_peak(subtracted, peaks.specular_x)
+            left_fwhm_gauss = _sp.fwhm_gauss_of_peak(subtracted, peaks.left_x)
+            right_fwhm_gauss = _sp.fwhm_gauss_of_peak(subtracted, peaks.right_x)
+
+            half_values = [
+                value for value in (left_fwhm_half, right_fwhm_half)
+                if value is not None
+            ]
+            gauss_values = [
+                value for value in (left_fwhm_gauss, right_fwhm_gauss)
+                if value is not None
+            ]
+            fwhm_half_list.append(specular_fwhm_half)
+            fwhm_gauss_list.append(specular_fwhm_gauss)
+            left_fwhm_half_list.append(left_fwhm_half)
+            right_fwhm_half_list.append(right_fwhm_half)
+            first_order_fwhm_half_list.append(
+                float(np.mean(half_values)) if half_values else None
+            )
+            left_fwhm_gauss_list.append(left_fwhm_gauss)
+            right_fwhm_gauss_list.append(right_fwhm_gauss)
+            first_order_fwhm_gauss_list.append(
+                float(np.mean(gauss_values)) if gauss_values else None
+            )
+
+            # Peak heights from the same background-subtracted profile and
+            # tracked positions used for spacing/FWHM. Report both ±1 sides
+            # for provenance and their available-side mean for the UI series.
+            specular_intensity = _sp.peak_intensity(subtracted, peaks.specular_x)
+            left_intensity = _sp.peak_intensity(subtracted, peaks.left_x)
+            right_intensity = _sp.peak_intensity(subtracted, peaks.right_x)
+            first_order_values = [
+                value for value in (left_intensity, right_intensity)
+                if value is not None
+            ]
+            specular_intensity_list.append(specular_intensity)
+            left_intensity_list.append(left_intensity)
+            right_intensity_list.append(right_intensity)
+            first_order_intensity_list.append(
+                float(np.mean(first_order_values)) if first_order_values else None
+            )
 
         return {
             "timestamps": self.timestamps.tolist(),
             "specular_x": specular_x, "left_x": left_x, "right_x": right_x,
             "avg_dx_px": avg_dx_list, "d_angstrom": d_list,
             "fwhm_halfmax_px": fwhm_half_list, "fwhm_gauss_px": fwhm_gauss_list,
+            "left_first_order_fwhm_halfmax_px": left_fwhm_half_list,
+            "right_first_order_fwhm_halfmax_px": right_fwhm_half_list,
+            "first_order_fwhm_halfmax_px": first_order_fwhm_half_list,
+            "left_first_order_fwhm_gauss_px": left_fwhm_gauss_list,
+            "right_first_order_fwhm_gauss_px": right_fwhm_gauss_list,
+            "first_order_fwhm_gauss_px": first_order_fwhm_gauss_list,
+            "specular_intensity_bgsub": specular_intensity_list,
+            "left_first_order_intensity_bgsub": left_intensity_list,
+            "right_first_order_intensity_bgsub": right_intensity_list,
+            "first_order_intensity_bgsub": first_order_intensity_list,
             "lost_frames": lost_frames,
         }

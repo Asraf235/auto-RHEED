@@ -1,0 +1,20 @@
+{
+  "id": "yolo-seg-tracking",
+  "adapter": "ultralytics-seg",
+  "source": "C:/Users/fqh/Documents/auto-RHEED/rheed_models/yolo26n_final_best.pt",
+  "task": "segmentation",
+  "revision": null,
+  "preprocessing": {
+    "high_percentile": 99.5,
+    "intensity_scaling": "dataset_percentile",
+    "low_percentile": 0.5
+  },
+  "options": {
+    "confidence": 0.25,
+    "iou": 0.7,
+    "image_size": 640,
+    "retina_masks": true,
+    "tracking": true,
+    "tracker": "bytetrack.yaml"
+  }
+}

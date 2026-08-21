@@ -9,11 +9,13 @@ Developed at Oak Ridge National Laboratory (ORNL).
 ## Features
 
 - **Multi-format loading** — HDF5 (`.h5`), video (`.mp4/.avi/.mov/.mkv`), NumPy (`.npy`), single images, or a folder of per-frame images stacked into one video; raw `.img` / TIFF detector frames supported.
-- **Calibration** — 5-point screen calibration (pixel scale + α) and substrate calibration via `d = λL/Δx` (relativistic electron wavelength), with reference *d* from a built-in table, the Materials Project (your own free API key), or a custom value.
+- **Calibration** — 5-point screen calibration (pixel scale + α) and a unified substrate/streak reference via `d = λL/Δx` (relativistic electron wavelength), with reference *d* from a built-in table, the Materials Project (your own free API key), or a custom value. Manual and automatic strip measurements use the same energy, material, and zone-axis settings.
 - **Peak tracking & α(t)** — track specular / direct-beam positions frame-by-frame to follow angle-of-incidence evolution, with an optional intensity-vs-α view.
 - **Lattice parameter d(t)** — automatic strip-profile tracking (ALS / rolling-ball / polynomial / moving-min background subtraction) with sub-pixel peak detection.
-- **Streak FWHM & coherence length** — specular-streak width (Gaussian fit or half-max) converted to in-plane coherence length, evolving per frame.
-- **Intensity vs time & growth rate** — per-ROI intensity oscillations (stacked, EMA-smoothed) and per-ROI FFT giving growth rate (ML/s), period, and deposition rate (Å/s).
+- **Streak FWHM & coherence length** — specular and nearest ±1 first-order streak widths (Gaussian fit or half-max), with specular width converted to in-plane coherence length, evolving per frame.
+- **Intensity vs time & growth rate** — per-ROI intensity oscillations plus background-subtracted specular/first-order strip-fit peak intensities (stacked, EMA-smoothed), and per-series FFT when the trace is complete.
+- **Local AI inference** — replaceable model adapters for frame embeddings, PCA/K-means clustering, RHAAPSODY changepoint detection with an interactive similarity-matrix plot, segmentation/tracking overlays, and future regression/classification models; frames and results remain on the local machine.
+- **Automatic result storage** — successful classical and AI analyses are written to a configurable local run folder instead of being retained only in browser/server memory.
 - **Library** — a persistent reference gallery of RHEED patterns by substrate.
 - **Publication-ready export** — every chart exports to CSV and to PNG with selectable font size and **600 DPI** (embedded); the frame viewer exports high-resolution annotated images.
 - **Colormaps** — perceptually-uniform Viridis/Plasma/Inferno/Magma and colorblind-safe Cividis, among others.
@@ -36,9 +38,11 @@ profile **(d)**; a slowly varying background is removed (asymmetric least square
 the specular and ±1 peaks are detected and refined to sub-pixel precision. Averaging the two
 specular-to-first-order distances gives Δx per frame, converted to the in-plane lattice
 parameter **d(t)** **(e)** — resolving monolayer-periodic oscillations on a slow relaxation
-toward the substrate value. From the same profiles, the specular streak's **FWHM** and the
-derived in-plane **coherence length L** are tracked every frame **(f)**, reporting the periodic
-sharpening and broadening of the diffraction features as each layer nucleates and coalesces.
+toward the substrate value. From the same profiles, the specular and nearest ±1 first-order
+streak **FWHM** values are tracked every frame **(f)**; the plot uses the available-side mean
+for the first-order trace while saved data retain each side. The specular width also yields
+the derived in-plane **coherence length L**, reporting the periodic sharpening and broadening
+of the diffraction features as each layer nucleates and coalesces.
 
 ### Kinetic monitoring — intensity oscillations & growth rate
 
@@ -60,23 +64,126 @@ A separate FFT window can be opened per ROI to compare rates from different feat
 
 ## Installation
 
-Requires **Python ≥ 3.10**. From the project root:
+Requires **Python ≥ 3.10** and [uv](https://docs.astral.sh/uv/). From the project root:
 
 ```bash
-pip install -e .
+uv sync --frozen
 ```
 
-This installs the runtime dependencies (NumPy, SciPy, OpenCV, h5py, Flask, mcp).
+This creates the local `.venv` and installs the exact dependency versions recorded in
+`uv.lock`. After intentionally changing dependencies in `pyproject.toml`, run `uv lock`
+followed by `uv sync` and commit the updated lockfile.
+
+AI runtimes are optional so the classical installation stays lightweight:
+
+```bash
+uv sync --extra dinov3  # local DINOv3 embeddings + PCA/K-means
+uv sync --extra yolo    # local YOLO-compatible instance segmentation
+uv sync --extra ai-all  # both adapters
+```
+
+In the app, open **Analysis**, load a dataset, and use the **Local AI
+Inference** card directly below **Growth Video** in the left sidebar.
+
+See [Local AI model inference](docs/AI_MODELS.md) for model manifests, offline
+operation, output formats, and writing adapters for new model families.
 
 ---
 
 ## Running the app
 
 ```bash
-python -m rheed_webapp.app
+uv run --frozen --no-sync python -m rheed_webapp.app
 ```
 
-Then open **http://localhost:5000** (set `PORT` to use a different port). The frontend is a single self-contained page; just refresh the browser to pick up template changes.
+`--no-sync` preserves whichever optional model adapters you selected during
+installation. Then open **http://localhost:5000** (set `PORT` to use a different
+port). The frontend is a single self-contained page; just refresh the browser to
+pick up template changes.
+
+### Desktop launchers
+
+All launchers run the same frozen UV environment without synchronizing away
+optional AI dependencies. They open the browser automatically and keep a terminal
+window visible; closing that terminal stops the local server. Desktop shortcuts
+store the repository's current absolute path, so rerun the shortcut creator after
+moving the repository.
+
+**Windows:** Double-click `Launch Auto RHEED.bat`. Run `Create Desktop
+Shortcut.bat` once to create an **Auto RHEED** Desktop shortcut.
+
+**macOS:** On first use, make the scripts executable and create the Desktop app:
+
+```bash
+chmod +x "Launch Auto RHEED.sh" "Launch Auto RHEED.command" \
+  "Create macOS Desktop Shortcut.command"
+./"Create macOS Desktop Shortcut.command"
+```
+
+You can then open **Auto RHEED.app** from the Desktop, or double-click `Launch
+Auto RHEED.command` directly. If macOS blocks the first launch, Control-click the
+app and choose **Open**.
+
+**Ubuntu:** On first use, make the scripts executable and create the Desktop
+launcher:
+
+```bash
+chmod +x "Launch Auto RHEED.sh" "Create Ubuntu Desktop Shortcut.sh"
+./"Create Ubuntu Desktop Shortcut.sh"
+```
+
+Double-click **Auto RHEED** on the Desktop. Some GNOME versions require one
+right-click → **Allow Launching** before the first use. The shared `Launch Auto
+RHEED.sh` script also works directly on other Linux desktops that provide
+`xdg-open` or `gio`.
+
+### Automatic analysis storage
+
+Every successful analysis is saved automatically. By default Auto RHEED creates
+timestamped dataset runs under `data/runs/` in the repository. In **Analysis →
+Analysis Storage**, enter another absolute local folder and click
+**Use This Folder** to change the destination. The selection is remembered in the
+local, untracked `.auto_rheed_settings.json` file. The MCP server uses the same
+setting; `AUTO_RHEED_DATA_DIR` can override it for an MCP process.
+
+Reopening the exact same source file reconnects to its newest matching run by a
+content fingerprint. Use **Saved Results for this dataset** to activate an older
+matching run and recall a classical result or AI inference run. AI recall also
+restores any saved PCA/K-means and RHAAPSODY changepoint/similarity analysis
+attached to that inference run; it does not rerun the model. A rotation starts a
+new run because it changes native pixel coordinates.
+
+Each run directory contains:
+
+```text
+manifest.json                 dataset identity, shape, timing, and version
+artifacts.jsonl               lightweight index of saved results
+classical/<analysis>/*.json    complete result and metadata
+classical/<analysis>/*.csv     readable tabular columns when available
+ai/<job>/{manifest.json,*.npy,frame_results.jsonl}
+ai/<job>/analyses/*.json       PCA/K-means and temporal metadata/results
+ai/<job>/analyses/*.csv        readable tabular post-analysis columns
+ai/<job>/analyses/*.npy        large matrices such as similarity data
+```
+
+Classical files include intensity traces, calibration, peak and strip tracking,
+FFT, material lookup, and manual growth-spacing/FWHM measurements. AI embeddings
+are stored as numeric arrays; segmentation/detection records are stored as an
+indexed JSONL stream. The viewer reads individual AI frames from disk on demand,
+and loads a complete time series only when its plot is opened. The original video
+is not duplicated into the results folder. Live strip-profile previews are not
+saved; running strip tracking creates the durable result. Older `.json.gz`
+artifacts remain readable but are not rewritten or deleted. `data/` and the local
+settings file are ignored by Git.
+
+Interactive classical plots use stable artifact names rather than timestamped
+revisions. For example, `classical/intensity/current.json` and its CSV companion
+contain the latest raw series, EMA series and alpha, visibility choices, and axis
+mode. Moving an EMA slider or changing a plot option replaces that artifact
+atomically. Lattice-spacing/FWHM, calibration, peak tracking, strip tracking, and
+material lookup follow the same latest-version rule; each FFT source series has
+one stable artifact that is replaced when its detrend or growth settings change.
+Existing historical timestamped artifacts are preserved.
 
 ### Desktop shortcut (Windows)
 
@@ -93,6 +200,8 @@ For a one-click launch, either:
 ```
 src/
   rheed_core/      # All RHEED physics; no Flask. Owns the dataset + math.
+    analysis_store.py   # file-backed analysis runs and random-access AI results
+    inference/          # stable local-model contracts, adapters, PCA/K-means
     session.py         # frame render, ROI intensity, calibration, tracking, strip_track
     streak_profile.py  # strip-sum profiles, background subtraction, peaks, FWHM
     spectra.py         # intensity FFT -> growth rate
@@ -130,6 +239,9 @@ If you use Auto RHEED in your research, please cite the associated paper
 ## License
 
 *(To be added — pending ORNL/DOE open-source approval.)*
+
+Bundled third-party components retain their own licenses and attribution; see
+[`THIRD_PARTY_LICENSES/`](THIRD_PARTY_LICENSES/).
 
 ## Acknowledgments
 

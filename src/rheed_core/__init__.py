@@ -9,5 +9,6 @@ and rheed_mcp import from here rather than reimplementing this logic.
 """
 
 from .session import RheedSession
+from .analysis_store import AnalysisStore, StoredInferenceRun
 
-__all__ = ["RheedSession"]
+__all__ = ["AnalysisStore", "RheedSession", "StoredInferenceRun"]

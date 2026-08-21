@@ -1,0 +1,18 @@
+{
+  "id": "yolo-seg-example",
+  "adapter": "ultralytics-seg",
+  "source": "C:/Users/fqh/Documents/auto-RHEED/rheed_models/yolo26n_final_best.pt",
+  "task": "segmentation",
+  "revision": null,
+  "preprocessing": {
+    "high_percentile": 99.5,
+    "intensity_scaling": "dataset_percentile",
+    "low_percentile": 0.5
+  },
+  "options": {
+    "confidence": 0.25,
+    "image_size": 640,
+    "iou": 0.7,
+    "retina_masks": true
+  }
+}

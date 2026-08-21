@@ -17,8 +17,8 @@ echo.
 rem Open the default browser a few seconds after the server starts booting.
 start "" cmd /c "timeout /t 4 /nobreak >nul & start "" http://127.0.0.1:5000/"
 
-rem Launch the Flask server (blocks here until you close the window).
-python -m rheed_webapp.app
+rem Launch from the already-synced uv environment without removing optional AI adapters.
+uv run --frozen --no-sync python -m rheed_webapp.app
 
 echo.
 echo Auto RHEED has stopped. Press any key to close this window.
