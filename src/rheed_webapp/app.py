@@ -9,6 +9,7 @@ knowledge of Flask — see src/rheed_core/.
 """
 import io
 import csv
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -40,6 +41,7 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024 * 1024  # 16 GB
 # itself (a 413, before our route code even runs) with an HTML error
 # page instead of JSON, which the frontend can't parse.
 app.request_class.max_form_parts = 50_000
+_MAX_RENDERED_FIGURE_BYTES = 256 * 1024 * 1024
 
 
 @app.after_request
@@ -143,6 +145,18 @@ def _record_analysis(
         parameters=parameters,
         name=name,
         replace=replace,
+    )
+
+
+def _save_export_response(filename: str, payload: bytes):
+    dataset_dir = _ensure_analysis_dataset()
+    target = analysis_store.save_export(filename, payload)
+    return jsonify(
+        ok=True,
+        filename=target.name,
+        path=str(target),
+        relative_path=target.relative_to(dataset_dir).as_posix(),
+        analysis_dir=str(dataset_dir),
     )
 
 # Persistent reference gallery of RHEED patterns (RHEED Library tab),
@@ -335,6 +349,56 @@ def analysis_record():
     return jsonify(ok=True, artifact=artifact)
 
 
+@app.route("/analysis/figures", methods=["POST"])
+def analysis_save_figure():
+    """Save one browser-rendered PNG in the active run's figures folder."""
+    uploaded = request.files.get("file")
+    if uploaded is None:
+        return jsonify(error="A PNG file is required"), 400
+    filename = str(request.form.get("filename") or uploaded.filename or "figure.png")
+    if Path(filename).suffix.lower() != ".png":
+        return jsonify(error="Saved figures must use the .png extension"), 400
+    payload = uploaded.stream.read(_MAX_RENDERED_FIGURE_BYTES + 1)
+    if len(payload) > _MAX_RENDERED_FIGURE_BYTES:
+        return jsonify(error="Rendered figure exceeds the 256 MB save limit"), 413
+    if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        return jsonify(error="The uploaded figure is not a valid PNG"), 400
+    try:
+        return _save_export_response(filename, payload)
+    except Exception as exc:
+        return jsonify(error=f"Could not save figure: {exc}"), 500
+
+
+@app.route("/analysis/figures/frame/<int:idx>", methods=["POST"])
+def analysis_save_frame(idx):
+    """Render and save the current contrast/colormap frame beside analyses."""
+    if session.frames is None:
+        return jsonify(error="No file loaded"), 400
+    data = request.get_json(silent=True) or {}
+    filename = str(data.get("filename") or f"rheed_frame_{idx + 1}.png")
+    try:
+        return _save_export_response(filename, session.export_frame_png(idx))
+    except (IndexError, ValueError) as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        return jsonify(error=f"Could not save frame: {exc}"), 500
+
+
+@app.route("/analysis/figures/all-frames", methods=["POST"])
+def analysis_save_all_frames():
+    """Save the complete rendered frame ZIP in the active run folder."""
+    if session.frames is None:
+        return jsonify(error="No file loaded"), 400
+    data = request.get_json(silent=True) or {}
+    filename = str(data.get("filename") or "rheed_frames.zip")
+    try:
+        return _save_export_response(filename, session.export_all_frames_zip())
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        return jsonify(error=f"Could not save frame archive: {exc}"), 500
+
+
 @app.route("/upload", methods=["POST"])
 def upload():
     f = request.files.get("file")
@@ -420,10 +484,19 @@ def intensity():
             roi=data,
             display_w=data.get("display_w"),
             display_h=data.get("display_h"),
+            use_background_subtraction=bool(
+                data.get("use_background_subtraction", False)
+            ),
         )
     except ValueError as e:
         return jsonify(error=str(e)), 400
-    result = {"intensities": intensities, "timestamps": timestamps}
+    result = {
+        "intensities": intensities,
+        "timestamps": timestamps,
+        "input_background_subtracted": bool(
+            data.get("use_background_subtraction", False)
+        ),
+    }
     try:
         artifact = _record_analysis(
             "intensity",
@@ -677,6 +750,28 @@ def set_colormap():
     return jsonify(ok=True)
 
 
+@app.route("/background_subtraction", methods=["POST"])
+def set_background_subtraction():
+    """Configure the non-destructive background used for rendered frames."""
+    if session.frames is None:
+        return jsonify(error="No file loaded"), 400
+    data = request.get_json() or {}
+    try:
+        frame_index = int(data.get("frame_index", 0))
+        config = data.get("config") or {}
+        settings = session.set_background_subtraction(
+            bool(data.get("enabled", False)),
+            config,
+        )
+        lo, hi = session.clim_auto_for_frame(frame_index)
+        if hi <= lo:
+            hi = lo + 1
+        session.set_clim(lo, hi)
+    except (TypeError, ValueError) as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(ok=True, background_subtraction=settings, clim=[lo, hi])
+
+
 # ── local AI inference ─────────────────────────────────────────────────────
 
 @app.route("/ai/adapters")
@@ -721,6 +816,16 @@ def ai_run():
     try:
         _ensure_analysis_dataset()
         spec = _ai_model_from_request(data)
+        preprocessing = dict(spec.preprocessing)
+        preprocessing.pop("background_subtraction", None)
+        use_background = bool(data.get("use_background_subtraction", False))
+        if use_background:
+            if not session.background_subtraction["enabled"]:
+                raise ValueError(
+                    "Background subtraction must be enabled before AI can use it"
+                )
+            preprocessing["background_subtraction"] = session.inference_background_config()
+        spec = replace(spec, preprocessing=preprocessing)
         batch_size = int(data.get("batch_size", 8))
         stride = int(data.get("stride", 1))
         if not 1 <= batch_size <= 1024:
@@ -1063,6 +1168,9 @@ def strip_profile():
             prev_peaks=data.get("prev_peaks"),
             vertical_track=data.get("vertical_track", True),
             display_w=data.get("display_w"), display_h=data.get("display_h"),
+            use_background_subtraction=bool(
+                data.get("use_background_subtraction", False)
+            ),
         )
     except Exception as e:
         return jsonify(error=str(e)), 400
@@ -1098,6 +1206,9 @@ def strip_track():
             v_kev=float(data["V_keV"]),
             vertical_track=data.get("vertical_track", True),
             display_w=data.get("display_w"), display_h=data.get("display_h"),
+            use_background_subtraction=bool(
+                data.get("use_background_subtraction", False)
+            ),
         )
     except Exception as e:
         return jsonify(error=str(e)), 400

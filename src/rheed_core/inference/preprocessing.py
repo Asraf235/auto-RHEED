@@ -4,7 +4,22 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..background import normalize_background_config, subtract_coarse_percentile_stack
 from .types import PreprocessingContext
+
+
+def apply_input_transforms(frames: np.ndarray, config: dict | None = None) -> np.ndarray:
+    """Apply deterministic, provenance-recorded transforms before an adapter."""
+    config = dict(config or {})
+    background = config.get("background_subtraction")
+    if background in (None, False):
+        return frames
+    if not isinstance(background, dict):
+        raise ValueError("preprocessing.background_subtraction must be an object")
+    if background.get("enabled", True) is False:
+        return frames
+    settings = normalize_background_config(background)
+    return subtract_coarse_percentile_stack(frames, settings)
 
 
 def build_preprocessing_context(
@@ -14,16 +29,15 @@ def build_preprocessing_context(
 ) -> PreprocessingContext:
     config = dict(config or {})
     scaling = str(config.get("intensity_scaling", "dataset_percentile"))
-    selected = frames[frame_indices]
-    if selected.size == 0:
+    if len(frame_indices) == 0:
         raise ValueError("No frames selected for preprocessing")
 
     if scaling == "fixed":
         low = float(config.get("intensity_low", 0.0))
         high = float(config.get("intensity_high", 65535.0))
     elif scaling == "dtype_range":
-        if np.issubdtype(selected.dtype, np.integer):
-            info = np.iinfo(selected.dtype)
+        if np.issubdtype(frames.dtype, np.integer):
+            info = np.iinfo(frames.dtype)
             low, high = float(info.min), float(info.max)
         else:
             low, high = 0.0, 1.0
@@ -35,11 +49,20 @@ def build_preprocessing_context(
         # Bound percentile work for very long/high-resolution videos while
         # sampling uniformly across both time and image space.
         max_frames = max(1, int(config.get("percentile_sample_frames", 64)))
-        temporal_step = max(1, len(selected) // max_frames)
-        sampled = selected[::temporal_step][:max_frames]
+        temporal_step = max(1, len(frame_indices) // max_frames)
+        sampled_indices = frame_indices[::temporal_step][:max_frames]
         max_pixels = max(10_000, int(config.get("percentile_sample_pixels", 2_000_000)))
-        spatial_step = max(1, int(np.sqrt(sampled.size / max_pixels)))
-        sample_values = sampled[:, ::spatial_step, ::spatial_step]
+        sampled_size = len(sampled_indices) * frames.shape[1] * frames.shape[2]
+        spatial_step = max(1, int(np.sqrt(sampled_size / max_pixels)))
+        # Transform and spatially sample one frame at a time so percentile
+        # context construction never materializes dozens of full-size frames.
+        sample_values = np.stack([
+            apply_input_transforms(frames[index:index + 1], config)[0][
+                ::spatial_step,
+                ::spatial_step,
+            ]
+            for index in sampled_indices
+        ])
         low, high = (float(v) for v in np.percentile(sample_values, [low_pct, high_pct]))
     else:
         raise ValueError(

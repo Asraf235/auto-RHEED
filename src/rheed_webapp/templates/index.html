@@ -796,6 +796,11 @@
         <input type="checkbox" id="clim-auto-every" disabled>
         Auto-contrast every frame
       </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:#94a3b8;margin-top:8px;">
+        <input type="checkbox" id="background-subtract" disabled>
+        Subtract broad background
+      </label>
+      <p style="font-size:.68rem;color:#475569;margin-top:4px;">Coarse 40th-percentile background, 96 px tiles.</p>
       <p style="font-size:.7rem;color:#475569;margin-top:6px;">Release slider to apply instantly.</p>
     </div>
 
@@ -965,9 +970,10 @@
       <h3>Local AI Inference</h3>
       <details class="help"><summary>Model adapters &amp; privacy</summary>
         <div class="help-body">
-          Runs locally on the loaded native frames. Choose a JSON manifest or configure
-          any installed adapter directly. Display contrast and color map do not affect
-          model input. Model weights are never included in exports or sent to a service.
+          Runs locally on the loaded frames. Choose a JSON manifest or configure any
+          installed adapter directly. Display contrast and color map do not affect model
+          input; broad-background subtraction is optional below. Model weights are never
+          included in exports or sent to a service.
         </div>
       </details>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:center;font-size:.72rem;color:#94a3b8;">
@@ -1006,6 +1012,10 @@
   "low_percentile": 0.5,
   "high_percentile": 99.5
 }</textarea>
+      <label style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:#94a3b8;margin-top:7px;">
+        <input id="gr-ai-use-background" type="checkbox" disabled>
+        Use background-subtracted frames for AI
+      </label>
       <div style="display:flex;gap:6px;margin-top:7px;">
         <button id="gr-ai-save" class="btn btn-sm" style="flex:1;background:#1e293b;color:#94a3b8;border:1px solid #334155;">Save Manifest</button>
         <button id="gr-ai-run" class="btn btn-primary btn-sm" style="flex:1;" disabled>Run Inference</button>
@@ -1433,6 +1443,34 @@
               style="background:#1e293b;color:#94a3b8;border:1px solid #334155;"
               disabled title="Set contrast automatically from the current frame">↺ Auto</button>
           </div>
+          <label class="viewer-contrast-auto" for="gr-background-subtract"
+            title="Subtract a smooth coarse-percentile background from every displayed frame">
+            <input type="checkbox" id="gr-background-subtract" disabled>
+            Coarse percentile background
+          </label>
+          <div id="gr-background-settings" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;font-size:.67rem;color:#94a3b8;">
+            <label title="Coarse tile width in native pixels">Tile
+              <input id="gr-background-tile" type="number" value="96" min="4" max="4096" step="4"
+                style="width:58px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:2px 4px;"> px
+            </label>
+            <label title="Percentile estimated within each tile">Percentile
+              <input id="gr-background-percentile" type="number" value="40" min="0" max="100" step="1"
+                style="width:48px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:2px 4px;">%
+            </label>
+            <label title="Gaussian smoothing on the coarse background grid, measured in tiles">Smooth
+              <input id="gr-background-smooth" type="number" value="1.25" min="0" max="20" step="0.25"
+                style="width:52px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:2px 4px;"> tiles
+            </label>
+            <label title="Pixel sampling interval inside each tile; larger values are faster">Sample
+              <input id="gr-background-sample" type="number" value="2" min="1" max="32" step="1"
+                style="width:42px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:2px 4px;"> px
+            </label>
+          </div>
+          <label class="viewer-contrast-auto" for="gr-roi-use-background"
+            title="Use coarse-percentile-corrected pixels for normal ROI intensities and strip-profile analysis">
+            <input type="checkbox" id="gr-roi-use-background" disabled>
+            ROIs use corrected pixels
+          </label>
         </div>
       </div>
     </div>
@@ -1547,40 +1585,58 @@
 
 <!-- FRAME PNG EXPORT MODAL (Growth Frame Viewer) -->
 <div id="gr-export-modal" style="display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.55);align-items:center;justify-content:center;">
-  <div style="background:#13151f;border:1px solid #2d3148;border-radius:10px;padding:18px 20px;width:312px;box-shadow:0 24px 70px rgba(0,0,0,.85);">
-    <div style="font-size:.92rem;font-weight:600;color:#e2e8f0;margin-bottom:14px;">Export Frame as PNG</div>
+  <div style="background:#13151f;border:1px solid #2d3148;border-radius:10px;padding:18px 20px;width:350px;box-shadow:0 24px 70px rgba(0,0,0,.85);">
+    <div style="font-size:.92rem;font-weight:600;color:#e2e8f0;margin-bottom:14px;">Save Frame as PNG</div>
     <div style="display:grid;grid-template-columns:1fr auto;gap:10px 8px;align-items:center;font-size:.78rem;color:#94a3b8;">
+      <label for="gr-export-filename">File name</label>
+      <input id="gr-export-filename" type="text" value="rheed_frame.png"
+        style="width:150px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;">
       <label for="gr-export-font">Label font size (px)</label>
       <input id="gr-export-font" type="number" value="11" min="4" max="160" step="1"
         style="width:78px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;">
       <label for="gr-export-dpi">Resolution (DPI)</label>
       <input id="gr-export-dpi" type="number" value="600" min="72" max="1200" step="1"
         style="width:78px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;">
+      <label for="gr-export-download">Also download a copy</label>
+      <input id="gr-export-download" type="checkbox">
     </div>
     <div id="gr-export-info" style="font-size:.68rem;color:#64748b;margin-top:10px;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
       <button id="gr-export-cancel" class="btn btn-sm" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;">Cancel</button>
-      <button id="gr-export-go" class="btn btn-primary btn-sm">Export PNG</button>
+      <button id="gr-export-go" class="btn btn-primary btn-sm">Save PNG</button>
     </div>
   </div>
 </div>
 
 <!-- CHART PNG EXPORT MODAL (shared by Plotly chart windows) -->
 <div id="chart-export-modal" style="display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.55);align-items:center;justify-content:center;">
-  <div style="background:#13151f;border:1px solid #2d3148;border-radius:10px;padding:18px 20px;width:312px;box-shadow:0 24px 70px rgba(0,0,0,.85);">
-    <div id="chart-export-title" style="font-size:.92rem;font-weight:600;color:#e2e8f0;margin-bottom:14px;">Export Chart as PNG</div>
+  <div style="background:#13151f;border:1px solid #2d3148;border-radius:10px;padding:18px 20px;width:360px;box-shadow:0 24px 70px rgba(0,0,0,.85);">
+    <div id="chart-export-title" style="font-size:.92rem;font-weight:600;color:#e2e8f0;margin-bottom:14px;">Save Figure as PNG</div>
     <div style="display:grid;grid-template-columns:1fr auto;gap:10px 8px;align-items:center;font-size:.78rem;color:#94a3b8;">
-      <label for="chart-export-font">Font size (px)</label>
-      <input id="chart-export-font" type="number" value="11" min="4" max="160" step="1"
+      <label for="chart-export-filename">File name</label>
+      <input id="chart-export-filename" type="text" value="figure.png"
+        style="width:150px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;">
+      <label for="chart-export-width">Figure width (in)</label>
+      <input id="chart-export-width" type="number" value="3.5" min="1" max="20" step="0.1"
+        style="width:78px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;">
+      <label for="chart-export-height">Figure height (in)</label>
+      <input id="chart-export-height" type="number" value="3.5" min="1" max="20" step="0.1"
+        style="width:78px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;">
+      <label for="chart-export-font">Font size (pt)</label>
+      <input id="chart-export-font" type="number" value="10" min="4" max="72" step="0.5"
         style="width:78px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;">
       <label for="chart-export-dpi">Resolution (DPI)</label>
       <input id="chart-export-dpi" type="number" value="600" min="72" max="1200" step="1"
         style="width:78px;background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;">
+      <label for="chart-export-transparent">Transparent background</label>
+      <input id="chart-export-transparent" type="checkbox" checked>
+      <label for="chart-export-download">Also download a copy</label>
+      <input id="chart-export-download" type="checkbox">
     </div>
     <div id="chart-export-info" style="font-size:.68rem;color:#64748b;margin-top:10px;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
       <button id="chart-export-cancel" class="btn btn-sm" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;">Cancel</button>
-      <button id="chart-export-go" class="btn btn-primary btn-sm">Export PNG</button>
+      <button id="chart-export-go" class="btn btn-primary btn-sm">Save PNG</button>
     </div>
   </div>
 </div>
@@ -1879,8 +1935,8 @@
       <li>Drag ROI handles (corner/edge dots) to resize any ROI; <b>right-click</b> an ROI or the strip box to delete it</li>
       <li>Drag S1/S2 streak markers after placing them to refine the measurement</li>
       <li>All floating windows (α(t), d(t), Intensity, Streak Profile, FWHM &amp; Coherence, FFT, and the Viewer) are draggable and resizable; <b>click any window to bring it to the front</b></li>
-      <li>Every chart window (Streak Profile, FWHM &amp; Coherence, d(t), Intensity vs Time, and each FFT window) has a <b>PNG</b> button that lets you set the <b>font size</b> and output <b>DPI (default 600, embedded in the PNG)</b> before saving — all chart fonts (axis titles, ticks, legend) scale together for publication-ready figures. The data windows also export <b>CSV</b>: including the Streak Profile (raw / baseline / subtracted columns for the current frame)</li>
-      <li>The <b>Viewer</b> has its own <b>🖼</b> export that saves the frame plus its overlays (ROIs, streak markers, peak guides) as a high-resolution PNG; before saving you can set the overlay <b>label font size</b> and the output <b>resolution (default 600 DPI)</b>, which is embedded in the PNG for publication figures</li>
+      <li>Every analysis plot is saved automatically into the active run's <b>figures/</b> folder and updated in place when interactive settings change. Automatic PNGs are <b>3.5 × 3.5 inches</b> with <b>10-point fonts</b>, <b>600 DPI</b>, and a transparent background. Each PNG button still opens a dialog for one-off overrides or an optional browser-download copy. The data windows also export <b>CSV</b>, including the Streak Profile (raw / baseline / subtracted columns for the current frame).</li>
+      <li>The <b>Viewer</b> has its own <b>🖼</b> export that saves the frame plus its overlays (ROIs, streak markers, peak guides) as a high-resolution PNG in the same <b>figures/</b> folder; before saving you can set the overlay <b>label font size</b> and the output <b>resolution (default 600 DPI)</b>, which is embedded in the PNG.</li>
       <li>Each complete intensity series can open its own independent <b>FFT</b> window; the <b>Library</b> tab keeps a persistent reference gallery of patterns by substrate</li>
     </ul>
   </section>
@@ -1914,9 +1970,11 @@ const state = {
   playTimer: null,
   clim: [0, 65535],
   climAuto: [0, 65535],
+  backgroundSubtraction: { enabled: false },
   rois: [],          // { type, color, label, ...coords }
   chartData: null,
   datasetName: null,
+  analysisDir: null,
   analysisResumed: false,
   savedArtifactCount: 0,
 };
@@ -1951,10 +2009,11 @@ const climLoVal    = document.getElementById('clim-lo-val');
 const climHiVal    = document.getElementById('clim-hi-val');
 const resetClim    = document.getElementById('reset-clim');
 const climAutoEvery = document.getElementById('clim-auto-every');
+const backgroundSubtract = document.getElementById('background-subtract');
 
 const exportCsvBtn = document.getElementById('export-csv');
 const computeBtn   = document.getElementById('gr-compute-btn');
-document.getElementById('ic-png')?.addEventListener('click', () => openChartExport('intensity-chart', 'intensity_vs_time.png', 11));
+document.getElementById('ic-png')?.addEventListener('click', () => openChartExport('intensity-chart', 'intensity_vs_time.png', 10));
 
 const loading      = document.getElementById('loading');
 const loadingMsg   = document.getElementById('loading-msg');
@@ -2045,12 +2104,15 @@ async function uploadFile(file) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
+    clearPlotAutosaves();
     state.nFrames = data.n_frames;
     state.fps     = data.fps;
     state.clim    = data.clim;
+    state.backgroundSubtraction = data.background_subtraction || { enabled: false };
     state.currentFrame = 0;
     state.rois    = [];
     state.chartData = null;
+    state.analysisDir = data.analysis_dir || null;
     state.analysisResumed = Boolean(data.analysis_resumed);
     state.savedArtifactCount = Number(data.saved_artifact_count) || 0;
     setLoadedDatasetName(data.dataset_name || file.name);
@@ -2078,6 +2140,7 @@ async function uploadFile(file) {
     // reset colormap to gray on new file
     cmapSelect.disabled = false;
     cmapSelect.value = 'gray';
+    syncBackgroundSubtractionControls();
 
     document.getElementById('file-info').style.display = 'block';
     document.getElementById('file-info').innerHTML =
@@ -2120,6 +2183,92 @@ function clearFrameCache() {
   frameCacheOrder = [];
   frameCacheBytes = 0;
   frameCacheGeneration += 1;
+}
+
+function syncBackgroundSubtractionControls() {
+  const enabled = Boolean(state.backgroundSubtraction?.enabled);
+  const loaded = state.nFrames > 0;
+  for (const id of ['background-subtract', 'gr-background-subtract']) {
+    const control = document.getElementById(id);
+    if (!control) continue;
+    control.disabled = !loaded;
+    control.checked = enabled;
+  }
+  const aiControl = document.getElementById('gr-ai-use-background');
+  if (aiControl) {
+    aiControl.disabled = !loaded || !enabled;
+    if (!enabled) aiControl.checked = false;
+  }
+  const roiControl = document.getElementById('gr-roi-use-background');
+  const roiWasChecked = Boolean(roiControl?.checked);
+  if (roiControl) {
+    roiControl.disabled = !loaded || !enabled;
+    if (!enabled) roiControl.checked = false;
+  }
+  if (!enabled && roiWasChecked && window._grRoiInputChanged) {
+    window._grRoiInputChanged();
+  }
+  const settingsPanel = document.getElementById('gr-background-settings');
+  if (settingsPanel) settingsPanel.style.display = enabled ? 'flex' : 'none';
+  const settings = state.backgroundSubtraction || {};
+  const settingValues = {
+    'gr-background-tile': settings.tile_size ?? 96,
+    'gr-background-percentile': settings.percentile ?? 40,
+    'gr-background-smooth': settings.smooth_sigma_tiles ?? 1.25,
+    'gr-background-sample': settings.sample_step ?? 2,
+  };
+  Object.entries(settingValues).forEach(([id, value]) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.disabled = !enabled;
+    if (document.activeElement !== input) input.value = value;
+  });
+}
+
+function syncContrastControls(clim) {
+  state.clim = clim;
+  for (const prefix of ['', 'gr-']) {
+    const lo = document.getElementById(`${prefix}clim-lo`);
+    const hi = document.getElementById(`${prefix}clim-hi`);
+    const loValue = document.getElementById(`${prefix}clim-lo-val`);
+    const hiValue = document.getElementById(`${prefix}clim-hi-val`);
+    if (lo) lo.value = clim[0];
+    if (hi) hi.value = clim[1];
+    if (loValue) loValue.textContent = clim[0];
+    if (hiValue) hiValue.textContent = clim[1];
+  }
+}
+
+function currentBackgroundConfig() {
+  const settings = state.backgroundSubtraction || {};
+  return {
+    method: 'coarse_percentile',
+    tile_size: Number(settings.tile_size ?? 96),
+    percentile: Number(settings.percentile ?? 40),
+    smooth_sigma_tiles: Number(settings.smooth_sigma_tiles ?? 1.25),
+    sample_step: Number(settings.sample_step ?? 2),
+  };
+}
+
+async function applyBackgroundSubtraction(enabled, frameIndex, config = null) {
+  const response = await fetch('/background_subtraction', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      enabled,
+      frame_index: frameIndex,
+      config: config || currentBackgroundConfig(),
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok || data.error) {
+    throw new Error(data.error || `Server error ${response.status}`);
+  }
+  state.backgroundSubtraction = data.background_subtraction;
+  syncContrastControls(data.clim);
+  clearFrameCache();
+  syncBackgroundSubtractionControls();
+  return data;
 }
 
 function touchFrameCache(idx) {
@@ -2333,6 +2482,8 @@ async function rotateFrame(direction) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
+    clearPlotAutosaves();
+    state.analysisDir = data.analysis_dir || null;
     // Anything tied to old pixel coordinates is now invalid — clear it.
     state.rois = [];
     renderRoiList();
@@ -2454,6 +2605,20 @@ climAutoEvery.addEventListener('change', async () => {
   climHi.disabled = climAutoEvery.checked;
   clearFrameCache();
   if (state.nFrames) await loadFrame(state.currentFrame);
+});
+
+backgroundSubtract.addEventListener('change', async () => {
+  if (!state.nFrames) return;
+  try {
+    await applyBackgroundSubtraction(backgroundSubtract.checked, state.currentFrame);
+    await loadFrame(state.currentFrame);
+    showToast(backgroundSubtract.checked
+      ? 'Coarse-percentile background subtraction enabled'
+      : 'Background subtraction disabled');
+  } catch (error) {
+    syncBackgroundSubtractionControls();
+    showToast('Could not change background subtraction: ' + error.message, true);
+  }
 });
 
 // Auto-contrast computed from whichever frame is currently on screen —
@@ -2628,7 +2793,14 @@ computeBtn.addEventListener('click', async () => {
   const series = [];
   for (const roi of state.rois) {
     try {
-      let payload = { type: roi.type, display_w: dw, display_h: dh };
+      let payload = {
+        type: roi.type,
+        display_w: dw,
+        display_h: dh,
+        use_background_subtraction: Boolean(
+          document.getElementById('gr-roi-use-background')?.checked
+        ),
+      };
       if (roi.type === 'circle') {
         payload = { ...payload, cx: roi.cx, cy: roi.cy, r: roi.r };
       } else if (roi.type === 'rect') {
@@ -2894,6 +3066,7 @@ function drawIntensityChart(idx, preserveAxes = false) {
   };
   restorePlotAxisRanges(layout, preservedRanges);
   Plotly.react('intensity-chart', traces, layout, { responsive: true, displaylogo: false, scrollZoom: true });
+  schedulePlotAutosave('intensity-chart', 'intensity_vs_time.png');
 }
 
 function plotChart(series) {
@@ -3091,6 +3264,7 @@ async function fftCompute(w) {
                gridcolor: '#1e293b' },
       showlegend: true, legend: { orientation: 'h', y: -0.34, font: { size: 13 } },
     }, { responsive: true, displaylogo: false });
+    schedulePlotAutosave(w.plot, `fft_roi_${i + 1}.png`);
   } catch (e) {
     w.readout.innerHTML = '<span style="color:#f87171;">Error: ' + e.message + '</span>';
   } finally {
@@ -3099,19 +3273,49 @@ async function fftCompute(w) {
   }
 }
 
-// Save any Plotly chart as a PNG. `div` is the plot element or its id;
-// exports at 2× scale at (at least) the chart's on-screen size.
+function normalizedPngFilename(value, fallback = 'figure.png') {
+  const supplied = String(value || '').trim().split(/[\\/]/).pop();
+  if (!supplied) return fallback;
+  if (/\.png$/i.test(supplied)) return supplied;
+  const stem = supplied.replace(/\.[^.]+$/, '') || fallback.replace(/\.png$/i, '');
+  return `${stem}.png`;
+}
+
+function downloadBlobCopy(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function saveBlobToAnalysisFolder(blob, filename, downloadCopy = false, silent = false) {
+  const safeFilename = normalizedPngFilename(filename);
+  const form = new FormData();
+  form.append('file', blob, safeFilename);
+  form.append('filename', safeFilename);
+  const response = await fetch('/analysis/figures', { method: 'POST', body: form });
+  const data = await response.json();
+  if (!response.ok || data.error) throw new Error(data.error || `Server error ${response.status}`);
+  state.analysisDir = data.analysis_dir || state.analysisDir;
+  if (downloadCopy) downloadBlobCopy(blob, data.filename || safeFilename);
+  if (!silent) showToast(`Saved ${data.relative_path} in ${data.analysis_dir}`);
+  return data;
+}
+window.saveBlobToAnalysisFolder = saveBlobToAnalysisFolder;
+
+function canvasPngBlob(canvas) {
+  return new Promise((resolve, reject) => canvas.toBlob(
+    blob => blob ? resolve(blob) : reject(new Error('Could not render PNG')),
+    'image/png',
+  ));
+}
+
+// Backward-compatible entry point used by older chart code: open the shared
+// publication export dialog rather than handing the file to browser Downloads.
 function savePlotPng(div, filename) {
-  if (typeof Plotly === 'undefined') return;
-  const el = typeof div === 'string' ? document.getElementById(div) : div;
-  if (!el || !el.data) return;
-  const r = el.getBoundingClientRect();
-  Plotly.downloadImage(el, {
-    format: 'png', filename,
-    width:  Math.max(800, Math.round(r.width)),
-    height: Math.max(480, Math.round(r.height)),
-    scale: 2,
-  });
+  openChartExport(div, filename, 10);
 }
 window.savePlotPng = savePlotPng;
 
@@ -3150,32 +3354,46 @@ function pngWithDpi(arrayBuffer, dpi) {
 }
 window.pngWithDpi = pngWithDpi;
 
-// ── DPI-aware PNG export for Plotly chart windows ──────────────────────────
-// A shared modal lets the user pick the chart font size and output DPI
-// (default 600) before saving. Font size is applied by temporarily
-// overriding the layout font; the image is supersampled to the requested
-// DPI and the value is embedded in the PNG (pHYs) for publication figures.
+// ── Publication PNG export for Plotly chart windows ─────────────────────────
+// Width/height are physical inches, font size is points, and DPI determines
+// the exact raster dimensions. The browser renders the PNG, then the Flask
+// process writes it into the active dataset run's figures folder.
 const CHART_EXPORT_MAXDIM = 12000;
 let _chartExportTarget = null;   // { div, filename }
 
-function chartExportScale(el, dpi) {
-  const r = el.getBoundingClientRect();
-  return Math.max(1, Math.min(dpi / 96, CHART_EXPORT_MAXDIM / Math.max(r.width, r.height)));
+function chartExportSpec() {
+  const widthIn = Math.max(1, parseFloat(document.getElementById('chart-export-width').value) || 3.5);
+  const heightIn = Math.max(1, parseFloat(document.getElementById('chart-export-height').value) || 3.5);
+  const dpi = Math.max(72, parseFloat(document.getElementById('chart-export-dpi').value) || 600);
+  const outputWidth = Math.round(widthIn * dpi);
+  const outputHeight = Math.round(heightIn * dpi);
+  return {
+    widthIn, heightIn, dpi, outputWidth, outputHeight,
+    logicalWidth: Math.round(widthIn * 96),
+    logicalHeight: Math.round(heightIn * 96),
+    scale: dpi / 96,
+    tooLarge: Math.max(outputWidth, outputHeight) > CHART_EXPORT_MAXDIM,
+  };
 }
 function chartExportRefreshInfo() {
   if (!_chartExportTarget) return;
-  const el = _chartExportTarget.div;
-  const dpi = parseFloat(document.getElementById('chart-export-dpi').value) || 600;
-  const r = el.getBoundingClientRect();
-  const scale = chartExportScale(el, dpi);
-  document.getElementById('chart-export-info').textContent =
-    `Output: ${Math.round(r.width * scale)} × ${Math.round(r.height * scale)} px @ ${dpi} DPI`;
+  const spec = chartExportSpec();
+  const info = document.getElementById('chart-export-info');
+  const destination = state.analysisDir
+    ? `${state.analysisDir}${state.analysisDir.includes('\\') ? '\\' : '/'}figures`
+    : 'the active analysis run/figures folder';
+  info.style.color = spec.tooLarge ? '#f87171' : '#64748b';
+  info.textContent = spec.tooLarge
+    ? `Requested output is ${spec.outputWidth} × ${spec.outputHeight} px; each dimension must be ≤ ${CHART_EXPORT_MAXDIM} px.`
+    : `Output: ${spec.outputWidth} × ${spec.outputHeight} px @ ${spec.dpi} DPI · Saves to ${destination}`;
 }
 function openChartExport(div, filename, defaultFont) {
   const el = typeof div === 'string' ? document.getElementById(div) : div;
   if (!el || !el.data) return;
   _chartExportTarget = { div: el, filename };
-  document.getElementById('chart-export-font').value = defaultFont || 11;
+  document.getElementById('chart-export-filename').value = normalizedPngFilename(filename);
+  if (!document.getElementById('chart-export-font').value)
+    document.getElementById('chart-export-font').value = defaultFont || 10;
   chartExportRefreshInfo();
   document.getElementById('chart-export-modal').style.display = 'flex';
 }
@@ -3183,67 +3401,189 @@ function closeChartExport() {
   document.getElementById('chart-export-modal').style.display = 'none';
   _chartExportTarget = null;
 }
-// Collect every "*.font.size" / "*.tickfont.size" path in a Plotly layout
-// (axis titles, legend, annotations, …), as relayout-compatible dotted
-// paths, so the export can scale them ALL — not just the global font.size,
-// which sub-elements with their own explicit size would otherwise ignore.
-function collectFontSizePaths(obj, prefix, acc) {
-  if (Array.isArray(obj)) {
-    obj.forEach((v, i) => { if (v && typeof v === 'object') collectFontSizePaths(v, `${prefix}[${i}]`, acc); });
-    return;
+function clonePlotValue(value) {
+  if (typeof structuredClone === 'function') {
+    try { return structuredClone(value); } catch (_) {}
   }
-  for (const k in obj) {
-    const v = obj[k];
-    const path = prefix ? `${prefix}.${k}` : k;
-    if (v && typeof v === 'object') {
-      collectFontSizePaths(v, path, acc);
-    } else if (k === 'size' && /font$/.test(prefix || '') && typeof v === 'number') {
-      acc[path] = v;
-    }
-  }
+  return JSON.parse(JSON.stringify(value));
 }
 
-async function runChartExport() {
-  if (!_chartExportTarget || typeof Plotly === 'undefined') { closeChartExport(); return; }
-  const el = _chartExportTarget.div, filename = _chartExportTarget.filename;
-  const fontPx = Math.max(1, parseFloat(document.getElementById('chart-export-font').value) || 11);
-  const dpi    = Math.max(1, parseFloat(document.getElementById('chart-export-dpi').value) || 600);
-  const r = el.getBoundingClientRect();
-  const scale = chartExportScale(el, dpi);
-
-  // Scale every font in the layout by the same factor relative to the base
-  // font, so axis titles, ticks and the legend all grow together.
-  const baseFont = (el.layout && el.layout.font && el.layout.font.size) || 11;
-  const factor = fontPx / baseFont;
-  const orig = {};
-  collectFontSizePaths(el.layout || {}, '', orig);
-  if (!('font.size' in orig)) orig['font.size'] = baseFont;   // ensure the global base is set too
-  const scaled = {}, restore = {};
-  for (const p in orig) { scaled[p] = orig[p] * factor; restore[p] = orig[p]; }
-
-  try {
-    await Plotly.relayout(el, scaled);
-    const dataUrl = await Plotly.toImage(el, {
-      format: 'png', width: Math.round(r.width), height: Math.round(r.height), scale,
+function applyExportFontSize(layout, fontPt) {
+  const baseFont = Number(layout?.font?.size) || 11;
+  const targetPx = fontPt * 96 / 72;
+  const factor = targetPx / baseFont;
+  const visit = (value, parentKey = '') => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      value.forEach(item => visit(item, parentKey));
+      return;
+    }
+    Object.entries(value).forEach(([key, item]) => {
+      if (key === 'size' && /font$/.test(parentKey) && typeof item === 'number') {
+        value[key] = item * factor;
+      } else if (item && typeof item === 'object') {
+        visit(item, key);
+      }
     });
-    await Plotly.relayout(el, restore);
+  };
+  visit(layout);
+  layout.font = { ...(layout.font || {}), size: targetPx };
+}
+
+async function renderPlotPngBlob(el, spec, fontPt = 10, transparent = true) {
+  const host = document.createElement('div');
+  host.style.cssText =
+    `position:fixed;left:-20000px;top:0;width:${spec.logicalWidth}px;` +
+    `height:${spec.logicalHeight}px;opacity:0;pointer-events:none;`;
+  document.body.appendChild(host);
+  try {
+    const data = clonePlotValue(el.data || []);
+    const layout = clonePlotValue(el.layout || {});
+    layout.autosize = false;
+    layout.width = spec.logicalWidth;
+    layout.height = spec.logicalHeight;
+    applyExportFontSize(layout, fontPt);
+    if (transparent) {
+      layout.paper_bgcolor = 'rgba(0,0,0,0)';
+      layout.plot_bgcolor = 'rgba(0,0,0,0)';
+    }
+    await Plotly.newPlot(host, data, layout, {
+      staticPlot: true, responsive: false, displayModeBar: false, displaylogo: false,
+    });
+    const dataUrl = await Plotly.toImage(host, {
+      format: 'png', width: spec.logicalWidth, height: spec.logicalHeight, scale: spec.scale,
+    });
     const bin = atob(dataUrl.split(',')[1]);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const out = pngWithDpi(bytes.buffer, dpi);
-    const url = URL.createObjectURL(new Blob([out], { type: 'image/png' }));
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    try { await Plotly.relayout(el, restore); } catch (_) {}
+    return new Blob([pngWithDpi(bytes.buffer, spec.dpi)], { type: 'image/png' });
+  } finally {
+    try { Plotly.purge(host); } catch (_) {}
+    host.remove();
   }
-  closeChartExport();
+}
+
+const AUTO_PLOT_EXPORT = Object.freeze({
+  widthIn: 3.5, heightIn: 3.5, fontPt: 10, dpi: 600, transparent: true,
+});
+const plotAutosaveTimers = new Map();
+const plotAutosaveGenerations = new Map();
+const plotAutosaveTargets = new Map();
+const plotAutosaveErrors = new Set();
+let plotAutosaveEpoch = 0;
+let plotAutosaveQueue = Promise.resolve();
+
+function clearPlotAutosaves() {
+  plotAutosaveTimers.forEach(timer => clearTimeout(timer));
+  plotAutosaveTimers.clear();
+  plotAutosaveGenerations.clear();
+  plotAutosaveTargets.clear();
+  plotAutosaveEpoch += 1;
+}
+
+function schedulePlotAutosave(div, filename, delayMs = 1200) {
+  if (typeof Plotly === 'undefined') return;
+  const el = typeof div === 'string' ? document.getElementById(div) : div;
+  if (!el) return;
+  const safeFilename = normalizedPngFilename(filename);
+  const targetKey = el.id || safeFilename;
+  const previousFilename = plotAutosaveTargets.get(targetKey);
+  if (previousFilename && previousFilename !== safeFilename) {
+    clearTimeout(plotAutosaveTimers.get(previousFilename));
+    plotAutosaveTimers.delete(previousFilename);
+    plotAutosaveGenerations.set(
+      previousFilename,
+      (plotAutosaveGenerations.get(previousFilename) || 0) + 1,
+    );
+  }
+  plotAutosaveTargets.set(targetKey, safeFilename);
+  const generation = (plotAutosaveGenerations.get(safeFilename) || 0) + 1;
+  const epoch = plotAutosaveEpoch;
+  const analysisDir = state.analysisDir;
+  plotAutosaveGenerations.set(safeFilename, generation);
+  clearTimeout(plotAutosaveTimers.get(safeFilename));
+  plotAutosaveTimers.set(safeFilename, setTimeout(() => {
+    plotAutosaveTimers.delete(safeFilename);
+    plotAutosaveQueue = plotAutosaveQueue.then(async () => {
+      if (
+        epoch !== plotAutosaveEpoch ||
+        generation !== plotAutosaveGenerations.get(safeFilename) ||
+        (analysisDir !== null && analysisDir !== state.analysisDir)
+      ) return;
+      const current = typeof div === 'string' ? document.getElementById(div) : div;
+      if (!current || !current.data || !current.data.length) return;
+      const logicalWidth = Math.round(AUTO_PLOT_EXPORT.widthIn * 96);
+      const logicalHeight = Math.round(AUTO_PLOT_EXPORT.heightIn * 96);
+      const spec = {
+        logicalWidth, logicalHeight,
+        outputWidth: Math.round(AUTO_PLOT_EXPORT.widthIn * AUTO_PLOT_EXPORT.dpi),
+        outputHeight: Math.round(AUTO_PLOT_EXPORT.heightIn * AUTO_PLOT_EXPORT.dpi),
+        scale: AUTO_PLOT_EXPORT.dpi / 96,
+        dpi: AUTO_PLOT_EXPORT.dpi,
+      };
+      const blob = await renderPlotPngBlob(
+        current, spec, AUTO_PLOT_EXPORT.fontPt, AUTO_PLOT_EXPORT.transparent,
+      );
+      if (
+        epoch !== plotAutosaveEpoch ||
+        generation !== plotAutosaveGenerations.get(safeFilename) ||
+        (analysisDir !== null && analysisDir !== state.analysisDir)
+      ) return;
+      await saveBlobToAnalysisFolder(blob, safeFilename, false, true);
+      plotAutosaveErrors.delete(safeFilename);
+    }).catch(error => {
+      const key = `${safeFilename}:${error.message}`;
+      if (!plotAutosaveErrors.has(key)) {
+        plotAutosaveErrors.add(key);
+        showToast(`Could not auto-save ${safeFilename}: ${error.message}`, true);
+      }
+    });
+  }, delayMs));
+}
+window.schedulePlotAutosave = schedulePlotAutosave;
+window.clearPlotAutosaves = clearPlotAutosaves;
+
+async function runChartExport() {
+  if (!_chartExportTarget || typeof Plotly === 'undefined') { closeChartExport(); return; }
+  const el = _chartExportTarget.div;
+  const filename = normalizedPngFilename(
+    document.getElementById('chart-export-filename').value,
+    _chartExportTarget.filename,
+  );
+  const fontPt = Math.max(1, parseFloat(document.getElementById('chart-export-font').value) || 10);
+  const transparent = document.getElementById('chart-export-transparent').checked;
+  const downloadCopy = document.getElementById('chart-export-download').checked;
+  const spec = chartExportSpec();
+  const info = document.getElementById('chart-export-info');
+  if (spec.tooLarge) {
+    chartExportRefreshInfo();
+    return;
+  }
+
+  const button = document.getElementById('chart-export-go');
+  button.disabled = true;
+  info.style.color = '#64748b';
+  info.textContent = 'Rendering and saving figure…';
+  try {
+    const blob = await renderPlotPngBlob(el, spec, fontPt, transparent);
+    await saveBlobToAnalysisFolder(
+      blob,
+      filename,
+      downloadCopy,
+    );
+    closeChartExport();
+  } catch (e) {
+    info.style.color = '#f87171';
+    info.textContent = `Could not save figure: ${e.message}`;
+  } finally {
+    button.disabled = false;
+  }
 }
 window.openChartExport = openChartExport;
 document.getElementById('chart-export-cancel').addEventListener('click', closeChartExport);
 document.getElementById('chart-export-go').addEventListener('click', runChartExport);
-document.getElementById('chart-export-dpi').addEventListener('input', chartExportRefreshInfo);
+['chart-export-width', 'chart-export-height', 'chart-export-dpi', 'chart-export-transparent']
+  .forEach(id => document.getElementById(id).addEventListener('input', chartExportRefreshInfo));
 document.getElementById('chart-export-modal').addEventListener('mousedown', e => {
   if (e.target.id === 'chart-export-modal') closeChartExport();
 });
@@ -3302,7 +3642,7 @@ function createFftWindow(i) {
   el.querySelector('.fft-min').addEventListener('click', () => {
     w.body.style.display = w.body.style.display === 'none' ? '' : 'none';
   });
-  el.querySelector('.fft-png').addEventListener('click', () => openChartExport(w.plot, `fft_roi_${i + 1}.png`, 11));
+  el.querySelector('.fft-png').addEventListener('click', () => openChartExport(w.plot, `fft_roi_${i + 1}.png`, 10));
 
   // Drag by titlebar
   (function () {
@@ -3570,11 +3910,13 @@ new ResizeObserver(() => {
       const res  = await fetch('/upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+      clearPlotAutosaves();
       state.nFrames   = data.n_frames;
       state.fps       = data.fps;
       state.duration  = data.duration;
       state.climAuto  = data.clim_auto || data.clim;
       state.clim      = [...state.climAuto];
+      state.analysisDir = data.analysis_dir || null;
       setLoadedDatasetName(data.dataset_name || file.name);
       await loadCalibFrame();
     } catch (e) { showToast('Error: ' + e.message, true); }
@@ -3819,17 +4161,18 @@ new ResizeObserver(() => {
   });
 
   // ── Save Image (frame + overlay composited) ───────────────────
-  document.getElementById('calib-save-img').addEventListener('click', () => {
+  document.getElementById('calib-save-img').addEventListener('click', async () => {
     const tmp = document.createElement('canvas');
     tmp.width  = calibCanvas.width;
     tmp.height = calibCanvas.height;
     const ctx = tmp.getContext('2d');
     ctx.drawImage(calibCanvas, 0, 0);
     ctx.drawImage(calibOverlay, 0, 0);
-    const a = document.createElement('a');
-    a.href = tmp.toDataURL('image/png');
-    a.download = 'rheed_calibration.png';
-    a.click();
+    try {
+      await saveBlobToAnalysisFolder(await canvasPngBlob(tmp), 'rheed_calibration.png');
+    } catch (error) {
+      showToast(`Could not save calibration image: ${error.message}`, true);
+    }
   });
 
   function setStatus(msg, color='#94a3b8') {
@@ -4230,6 +4573,7 @@ openChartFab.addEventListener('click', () => {
   const grAiStride     = document.getElementById('gr-ai-stride');
   const grAiOptions    = document.getElementById('gr-ai-options');
   const grAiPreprocessing = document.getElementById('gr-ai-preprocessing');
+  const grAiUseBackground = document.getElementById('gr-ai-use-background');
   const grAiSave       = document.getElementById('gr-ai-save');
   const grAiRun        = document.getElementById('gr-ai-run');
   const grAiCancel     = document.getElementById('gr-ai-cancel');
@@ -4297,6 +4641,12 @@ openChartFab.addEventListener('click', () => {
   const grResetClim   = document.getElementById('gr-reset-clim');
   const grClimAutoEvery = document.getElementById('gr-clim-auto-every');
   const grCmapSelect  = document.getElementById('gr-cmap-select');
+  const grBackgroundSubtract = document.getElementById('gr-background-subtract');
+  const grBackgroundTile = document.getElementById('gr-background-tile');
+  const grBackgroundPercentile = document.getElementById('gr-background-percentile');
+  const grBackgroundSmooth = document.getElementById('gr-background-smooth');
+  const grBackgroundSample = document.getElementById('gr-background-sample');
+  const grRoiUseBackground = document.getElementById('gr-roi-use-background');
 
   const grEnergy       = document.getElementById('gr-energy');
   const grL            = document.getElementById('gr-L');
@@ -4635,7 +4985,7 @@ openChartFab.addEventListener('click', () => {
     }
 
     // ── Save Image ────────────────────────────────────────────────
-    document.getElementById('fvc-save-img').addEventListener('click', () => {
+    document.getElementById('fvc-save-img').addEventListener('click', async () => {
       // Composite: frame canvas + overlay (at native resolution)
       const tmp = document.createElement('canvas');
       tmp.width  = fvcCanvas.width;
@@ -4708,10 +5058,11 @@ openChartFab.addEventListener('click', () => {
         ctx.fillText(`scale = ${fvcResult.scale_cm_px} cm/px`, W-210, H-14);
         ctx.restore();
       }
-      const a = document.createElement('a');
-      a.href = tmp.toDataURL('image/png');
-      a.download = 'rheed_frame_calibration.png';
-      a.click();
+      try {
+        await saveBlobToAnalysisFolder(await canvasPngBlob(tmp), 'rheed_frame_calibration.png');
+      } catch (error) {
+        showToast(`Could not save frame-calibration image: ${error.message}`, true);
+      }
     });
 
     // ── Save JSON ─────────────────────────────────────────────────
@@ -4976,6 +5327,7 @@ openChartFab.addEventListener('click', () => {
     function renderAlphaChart(data) {
       const traces = buildTraces(data);
       Plotly.react('alpha-plotly', traces, alphaLayout(), { responsive: true, displayModeBar: false });
+      schedulePlotAutosave('alpha-plotly', 'alpha_vs_time.png');
       new ResizeObserver(() => Plotly.Plots.resize('alpha-plotly'))
         .observe(document.getElementById('alpha-chart-win'));
     }
@@ -5012,6 +5364,7 @@ openChartFab.addEventListener('click', () => {
         legend: { bgcolor: 'rgba(0,0,0,0)', font: { size: 10 } },
       };
       Plotly.react('rock-plotly', traces, layout, { responsive: true, displayModeBar: false });
+      schedulePlotAutosave('rock-plotly', 'rocking_curve.png');
       new ResizeObserver(() => Plotly.Plots.resize('rock-plotly'))
         .observe(document.getElementById('alpha-chart-win'));
     }
@@ -5337,6 +5690,7 @@ openChartFab.addEventListener('click', () => {
       const data = await response.json();
       if (!response.ok || data.error) throw new Error(data.error || `Server error ${response.status}`);
       grAnalysisRoot.value = data.root || '';
+      state.analysisDir = data.dataset_dir || null;
       const active = data.dataset_dir
         ? `Active run: ${data.dataset_dir}`
         : 'No active run yet; one will be created when data is loaded or analysis is run.';
@@ -5836,6 +6190,7 @@ openChartFab.addEventListener('click', () => {
     grClimLo.disabled = false; grClimHi.disabled = false;
     grResetClim.disabled = false;
     grClimAutoEvery.disabled = false; grClimAutoEvery.checked = false;
+    syncBackgroundSubtractionControls();
 
     // Colormap resets to gray on a fresh load (matches Frame Viewer's behavior)
     grCmapSelect.disabled = false;
@@ -5872,18 +6227,22 @@ openChartFab.addEventListener('click', () => {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
+      clearPlotAutosaves();
       state.nFrames = data.n_frames;
       state.fps = data.fps;
       state.clim = data.clim;
+      state.backgroundSubtraction = data.background_subtraction || { enabled: false };
       state.climAuto = data.clim_auto || data.clim;
       state.currentFrame = 0;
       state.rois = [];
       state.chartData = null;
+      state.analysisDir = data.analysis_dir || null;
       state.analysisResumed = Boolean(data.analysis_resumed);
       state.savedArtifactCount = Number(data.saved_artifact_count) || 0;
       const stackLabel = data.dataset_name || `${fileList.length} images (stacked)`;
       setLoadedDatasetName(stackLabel);
       clearFrameCache();
+      syncBackgroundSubtractionControls();
 
       // Keep Frame Viewer's own UI in sync too, same as uploadFile() does.
       slider.max = state.nFrames - 1; slider.value = 0; slider.disabled = false;
@@ -5930,20 +6289,44 @@ openChartFab.addEventListener('click', () => {
     grHandleFiles(e.dataTransfer.files);
   });
 
-  // ── Save frame(s) ─────────────────────────────────────────────────────
-  function grDownload(url) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.click();
+  // ── Save frame(s) into the active analysis run ─────────────────────────
+  async function grSaveServerExport(url, filename) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || `Server error ${response.status}`);
+    state.analysisDir = data.analysis_dir || state.analysisDir;
+    showToast(`Saved ${data.relative_path} in ${data.analysis_dir}`);
+    return data;
   }
-  grSaveFrameBtn.addEventListener('click', () => {
+  grSaveFrameBtn.addEventListener('click', async () => {
     if (!grHasData()) return;
-    grDownload(`/export_frame/${grIdx}`);
+    grSaveFrameBtn.disabled = true;
+    try {
+      await grSaveServerExport(
+        `/analysis/figures/frame/${grIdx}`,
+        `rheed_frame_${grIdx + 1}.png`,
+      );
+    } catch (error) {
+      showToast(`Could not save frame: ${error.message}`, true);
+    } finally {
+      grSaveFrameBtn.disabled = false;
+    }
   });
-  grSaveAllBtn.addEventListener('click', () => {
+  grSaveAllBtn.addEventListener('click', async () => {
     if (!grHasData()) return;
-    showToast(`Preparing ${state.nFrames} frames as a ZIP — this may take a moment…`);
-    grDownload('/export_frames_zip');
+    grSaveAllBtn.disabled = true;
+    showToast(`Saving ${state.nFrames} frames as a ZIP — this may take a moment…`);
+    try {
+      await grSaveServerExport('/analysis/figures/all-frames', 'rheed_frames.zip');
+    } catch (error) {
+      showToast(`Could not save frame archive: ${error.message}`, true);
+    } finally {
+      grSaveAllBtn.disabled = false;
+    }
   });
 
   // ── Local model-adapter inference ──────────────────────────────────────
@@ -6200,6 +6583,7 @@ openChartFab.addEventListener('click', () => {
           model, device: grAiDevice.value,
           batch_size: parseInt(grAiBatch.value) || 1,
           stride: parseInt(grAiStride.value) || 1,
+          use_background_subtraction: grAiUseBackground.checked,
         }),
       });
       const data = await response.json();
@@ -6517,6 +6901,10 @@ openChartFab.addEventListener('click', () => {
         yaxis: { title: valueNames.length ? 'model output' : (grAiTask === 'classification' ? 'label' : 'instances'), gridcolor: '#1e293b' },
         legend: { orientation: 'h', y: 1.1 }, hovermode: 'closest',
       }, { responsive: true, displaylogo: false });
+      schedulePlotAutosave(
+        'gr-ai-plotly',
+        `rheed_ai_${String(grAiTask || 'results').replace(/[^a-z0-9]+/gi, '_').toLowerCase()}_vs_time.png`,
+      );
       grAiBindPlotClick();
       return;
     }
@@ -6554,6 +6942,7 @@ openChartFab.addEventListener('click', () => {
         })),
         legend: { orientation: 'h', y: 1.1 }, hovermode: 'closest',
       }, { responsive: true, displaylogo: false });
+      schedulePlotAutosave('gr-ai-plotly', 'rhaapsody_changepoints.png');
       grAiBindPlotClick();
       return;
     }
@@ -6650,6 +7039,7 @@ openChartFab.addEventListener('click', () => {
       })),
       legend: { orientation: 'h', y: 1.08 }, hovermode: 'closest',
     }, { responsive: true, displaylogo: false });
+    schedulePlotAutosave('gr-ai-plotly', 'rheed_ai_embedding_clusters.png');
     grAiPcaTrackerTraces = trackerTraces;
     grAiPcaMarkerPosition = currentSample ? currentSample.position : null;
     grAiBindPlotClick();
@@ -6821,6 +7211,7 @@ openChartFab.addEventListener('click', () => {
     if (grAiSimilarityLoadedKey === key && grAiSimilarityPlot.data) {
       Plotly.Plots.resize(grAiSimilarityPlot);
       grAiScheduleSimilarityCursor(grIdx);
+      schedulePlotAutosave(grAiSimilarityPlot, 'rhaapsody_similarity_matrix.png', 1800);
       return;
     }
     const generation = grAiSimilarityGeneration;
@@ -6914,6 +7305,7 @@ openChartFab.addEventListener('click', () => {
         grAiSimilarityPlot._rheedSimilarityClickBound = true;
       }
       grAiScheduleSimilarityCursor(grIdx);
+      schedulePlotAutosave(grAiSimilarityPlot, 'rhaapsody_similarity_matrix.png', 1800);
     } catch (error) {
       if (generation === grAiSimilarityGeneration) {
         grAiSimilarityStatus.textContent = 'Could not load matrix: ' + error.message;
@@ -7043,6 +7435,55 @@ openChartFab.addEventListener('click', () => {
     clearFrameCache();
     if (grHasData()) await grShowFrame(grIdx);
   });
+
+  grBackgroundSubtract.addEventListener('change', async () => {
+    if (!grHasData()) return;
+    grStopPlay();
+    try {
+      await applyBackgroundSubtraction(grBackgroundSubtract.checked, grIdx);
+      await grShowFrame(grIdx);
+      showToast(grBackgroundSubtract.checked
+        ? 'Coarse-percentile background subtraction enabled for every frame'
+        : 'Background subtraction disabled');
+    } catch (error) {
+      syncBackgroundSubtractionControls();
+      showToast('Could not change background subtraction: ' + error.message, true);
+    }
+  });
+
+  function grBackgroundConfigFromControls() {
+    return {
+      method: 'coarse_percentile',
+      tile_size: Number(grBackgroundTile.value),
+      percentile: Number(grBackgroundPercentile.value),
+      smooth_sigma_tiles: Number(grBackgroundSmooth.value),
+      sample_step: Number(grBackgroundSample.value),
+    };
+  }
+
+  [
+    grBackgroundTile,
+    grBackgroundPercentile,
+    grBackgroundSmooth,
+    grBackgroundSample,
+  ].forEach(input => input.addEventListener('change', async () => {
+    if (!grHasData() || !grBackgroundSubtract.checked) return;
+    grStopPlay();
+    try {
+      await applyBackgroundSubtraction(
+        true,
+        grIdx,
+        grBackgroundConfigFromControls(),
+      );
+      await grShowFrame(grIdx);
+      if (grRoiUseBackground.checked) grRoiInputChanged();
+      showToast('Coarse-percentile background settings updated');
+    } catch (error) {
+      input.blur();
+      syncBackgroundSubtractionControls();
+      showToast('Invalid background setting: ' + error.message, true);
+    }
+  }));
 
   // ── Colormap — custom gradient-swatch dropdown over a hidden <select>.
   //    The hidden select stays the source of truth (other code reads its
@@ -7210,8 +7651,10 @@ openChartFab.addEventListener('click', () => {
 
   // ── High-res PNG export of the frame + overlays ──────────────────────────
   const grExportModal  = document.getElementById('gr-export-modal');
+  const grExportFilename = document.getElementById('gr-export-filename');
   const grExportFont   = document.getElementById('gr-export-font');
   const grExportDpi    = document.getElementById('gr-export-dpi');
+  const grExportDownload = document.getElementById('gr-export-download');
   const grExportInfo   = document.getElementById('gr-export-info');
   const GR_EXPORT_MAXDIM = 12000;   // guard against absurd canvas sizes
 
@@ -7226,18 +7669,24 @@ openChartFab.addEventListener('click', () => {
     const scale = grExportScale(dpi);
     const ow = Math.round(grFrameCanvas.width * scale);
     const oh = Math.round(grFrameCanvas.height * scale);
+    const destination = state.analysisDir
+      ? `${state.analysisDir}${state.analysisDir.includes('\\') ? '\\' : '/'}figures`
+      : 'the active analysis run/figures folder';
+    grExportInfo.style.color = '#64748b';
     grExportInfo.textContent = `Output: ${ow} × ${oh} px @ ${dpi} DPI` +
-      (scale < dpi / 96 ? '  (capped to keep size sane)' : '');
+      (scale < dpi / 96 ? ' (capped to keep size sane)' : '') +
+      ` · Saves to ${destination}`;
   }
   function grOpenExport() {
     if (!grHasData()) return;
+    grExportFilename.value = `rheed_frame_${grIdx + 1}.png`;
     grExportFont.value = grOverlayFontPx;   // reflect the current overlay font
     grExportRefreshInfo();
     grExportModal.style.display = 'flex';
   }
   function grCloseExport() { grExportModal.style.display = 'none'; }
 
-  function grDoExport() {
+  async function grDoExport() {
     const fontPx = Math.max(1, parseFloat(grExportFont.value) || 11);
     const dpi    = Math.max(1, parseFloat(grExportDpi.value) || 600);
     const scale  = grExportScale(dpi);
@@ -7250,14 +7699,25 @@ openChartFab.addEventListener('click', () => {
     c.imageSmoothingQuality = 'high';
     c.drawImage(grFrameCanvas, 0, 0, ex.width, ex.height);   // RHEED frame
     grDrawOverlay(c, scale, fontPx);                          // crisp vector overlays
-    ex.toBlob(async (blob) => {
+    const button = document.getElementById('gr-export-go');
+    button.disabled = true;
+    grExportInfo.style.color = '#64748b';
+    grExportInfo.textContent = 'Rendering and saving frame…';
+    try {
+      const blob = await canvasPngBlob(ex);
       const out = pngWithDpi(await blob.arrayBuffer(), dpi);
-      const url = URL.createObjectURL(new Blob([out], { type: 'image/png' }));
-      const a = document.createElement('a');
-      a.href = url; a.download = `rheed_frame_${grIdx + 1}.png`; a.click();
-      URL.revokeObjectURL(url);
-    }, 'image/png');
-    grCloseExport();
+      await saveBlobToAnalysisFolder(
+        new Blob([out], { type: 'image/png' }),
+        normalizedPngFilename(grExportFilename.value, `rheed_frame_${grIdx + 1}.png`),
+        grExportDownload.checked,
+      );
+      grCloseExport();
+    } catch (error) {
+      grExportInfo.style.color = '#f87171';
+      grExportInfo.textContent = `Could not save frame: ${error.message}`;
+    } finally {
+      button.disabled = false;
+    }
   }
 
   document.getElementById('gr-export-png').addEventListener('click', grOpenExport);
@@ -7284,6 +7744,8 @@ openChartFab.addEventListener('click', () => {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
+      clearPlotAutosaves();
+      state.analysisDir = data.analysis_dir || null;
       // Everything tied to old pixel coordinates is now invalid — clear it.
       grStripRoi = null;
       grLastPeaks = null;
@@ -8504,6 +8966,7 @@ openChartFab.addEventListener('click', () => {
           bg_method: grBgMethod.value,
           prev_peaks: seedPeaks,
           vertical_track: grVtrack.checked,
+          use_background_subtraction: grRoiUseBackground.checked,
           display_w: grFrameCanvas.width, display_h: grFrameCanvas.height,
         }),
       });
@@ -8592,6 +9055,7 @@ openChartFab.addEventListener('click', () => {
       shapes, annotations,
       showlegend: true, legend: { orientation: 'h', y: -0.3, font: { size: 9 } },
     }, { responsive: true, displaylogo: false });
+    schedulePlotAutosave('gr-profile-plotly', 'streak_profile_current.png');
   }
 
   grBgMethod.addEventListener('change', () => {
@@ -8651,6 +9115,19 @@ openChartFab.addEventListener('click', () => {
     grPersistMeasurements();
   });
 
+  function grRoiInputChanged() {
+    grLastPeaks = null;
+    grLastBand = null;
+    if (grStripRoi) grUpdateStripPreview();
+  }
+  window._grRoiInputChanged = grRoiInputChanged;
+  grRoiUseBackground.addEventListener('change', () => {
+    grRoiInputChanged();
+    showToast(grRoiUseBackground.checked
+      ? 'ROI and strip analyses will use coarse-percentile-corrected pixels'
+      : 'ROI and strip analyses will use original pixels');
+  });
+
   // ── Strip-profile (auto) — track across the whole video ──────────────────
   function grSetFwhmDataFromStrip(data) {
     grFwhmData = [];
@@ -8692,6 +9169,7 @@ openChartFab.addEventListener('click', () => {
           bg_method: grBgMethod.value,
           scale_cm_px: grCalib.scale_cm_px, L_cm: grCalib.L_cm, V_keV: grCalib.V_keV,
           vertical_track: grVtrack.checked,
+          use_background_subtraction: grRoiUseBackground.checked,
           display_w: grFrameCanvas.width, display_h: grFrameCanvas.height,
         }),
       });
@@ -8931,6 +9409,7 @@ openChartFab.addEventListener('click', () => {
     } else {
       Plotly.restyle('gr-chart-plotly', { x: [t], y: [d] }, [0]);
     }
+    schedulePlotAutosave('gr-chart-plotly', 'lattice_parameter_dt.png');
   }
 
   grEmaCsvBtn.addEventListener('click', () => {
@@ -8955,7 +9434,7 @@ openChartFab.addEventListener('click', () => {
   });
   grChartClose.addEventListener('click', () => { grChartWin.style.display = 'none'; });
   document.getElementById('gr-chart-png-btn').addEventListener('click',
-    () => openChartExport('gr-chart-plotly', 'lattice_parameter_dt.png', 11));
+    () => openChartExport('gr-chart-plotly', 'lattice_parameter_dt.png', 10));
   grChartMin.addEventListener('click', () => {
     const body = document.getElementById('gr-chart-plotly');
     body.style.display = body.style.display === 'none' ? '' : 'none';
@@ -9116,6 +9595,7 @@ openChartFab.addEventListener('click', () => {
     const ys = grFwhmTraceMap.map(tr => cache[`${tr.series}|${tr.kind}`]);
     grFwhmStatusEl.textContent = `${visible.length} / ${grFwhmData.length} frames`;
     Plotly.restyle('gr-fwhm-plotly', { x: xs, y: ys }, grFwhmTraceMap.map((_, i) => i));
+    schedulePlotAutosave('gr-fwhm-plotly', 'streak_fwhm_coherence.png');
   }
 
   function grUpdateFwhmMethodLabel() {
@@ -9177,7 +9657,7 @@ openChartFab.addEventListener('click', () => {
 
   grFwhmClose.addEventListener('click', () => { grFwhmWin.style.display = 'none'; });
   document.getElementById('gr-fwhm-png-btn').addEventListener('click',
-    () => openChartExport('gr-fwhm-plotly', 'streak_fwhm_coherence.png', 11));
+    () => openChartExport('gr-fwhm-plotly', 'streak_fwhm_coherence.png', 10));
   grFwhmMin.addEventListener('click', () => {
     const body = document.getElementById('gr-fwhm-plotly');
     body.style.display = body.style.display === 'none' ? '' : 'none';

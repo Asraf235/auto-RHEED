@@ -21,6 +21,11 @@ from numpy.fft import rfft as _rfft, rfftfreq as _rfftfreq
 from . import io as rheed_io
 from .constants import CV2_CMAPS, IMAGE_EXTS, VIDEO_EXTS
 from .calibration import Point, calibrate as _calibrate
+from .background import (
+    COARSE_PERCENTILE_DEFAULTS,
+    normalize_background_config,
+    subtract_coarse_percentile_background,
+)
 from . import streak_profile as _sp
 
 
@@ -79,6 +84,10 @@ class RheedSession:
         self.clim = (0, 65535)
         self.clim_auto = (0, 65535)
         self.colormap = "gray"
+        self.background_subtraction = {
+            "enabled": False,
+            **COARSE_PERCENTILE_DEFAULTS,
+        }
         # Monotonic identity for results tied to native pixel data. Loading
         # or rotating replaces the coordinate system and invalidates cached
         # calibration, ROI, streak, and AI inference results.
@@ -121,6 +130,10 @@ class RheedSession:
         # the backend keeps rendering with whatever colormap was set for
         # the PREVIOUS file, and the two visibly disagree.
         self.colormap = "gray"
+        self.background_subtraction = {
+            "enabled": False,
+            **COARSE_PERCENTILE_DEFAULTS,
+        }
         self.dataset_version += 1
 
     def summary(self) -> dict:
@@ -132,6 +145,7 @@ class RheedSession:
             "n_frames": n, "height": H, "width": W,
             "duration": round(duration, 3), "fps": round(fps, 2),
             "clim": list(self.clim), "clim_auto": list(self.clim_auto),
+            "background_subtraction": dict(self.background_subtraction),
         }
 
     def preview_image(self, path: str, suffix: str):
@@ -165,6 +179,43 @@ class RheedSession:
             raise RuntimeError("No file loaded")
         return self.frames
 
+    def display_frame(self, idx: int) -> np.ndarray:
+        """Return one frame with the active non-destructive display transform."""
+        frames = self.require_frames()
+        idx = max(0, min(idx, self.n_frames - 1))
+        frame = frames[idx]
+        if self.background_subtraction["enabled"]:
+            return subtract_coarse_percentile_background(
+                frame,
+                self.background_subtraction,
+            )
+        return frame
+
+    def set_background_subtraction(
+        self,
+        enabled: bool,
+        config: dict | None = None,
+    ) -> dict:
+        settings = normalize_background_config(config)
+        self.background_subtraction = {"enabled": bool(enabled), **settings}
+        return dict(self.background_subtraction)
+
+    def inference_background_config(self) -> dict:
+        """Return the active transform without its display-only enabled flag."""
+        return normalize_background_config(self.background_subtraction)
+
+    def analysis_frame(self, idx: int, use_background_subtraction: bool = False) -> np.ndarray:
+        """Return raw or corrected pixels for an explicitly configured analysis."""
+        frames = self.require_frames()
+        idx = max(0, min(idx, self.n_frames - 1))
+        if not use_background_subtraction:
+            return frames[idx]
+        if not self.background_subtraction["enabled"]:
+            raise ValueError(
+                "Background subtraction must be enabled before ROI analyses can use it"
+            )
+        return self.display_frame(idx)
+
     def frame_png_b64(self, idx: int, auto_contrast: bool = False):
         """auto_contrast=True recomputes clim from THIS frame (and stores
         it as the current clim, so the UI sliders stay in sync) instead
@@ -177,7 +228,7 @@ class RheedSession:
         if auto_contrast:
             clim = self.clim_auto_for_frame(idx)
             self.clim = clim
-        b64 = frame_to_png_b64(frames[idx], clim, self.colormap)
+        b64 = frame_to_png_b64(self.display_frame(idx), clim, self.colormap)
         t = float(self.timestamps[idx]) if self.timestamps is not None else idx
         return b64, round(t, 4)
 
@@ -190,13 +241,13 @@ class RheedSession:
         jpeg_quality: int = 90,
     ):
         """Binary frame response used by the latency-sensitive browser player."""
-        frames = self.require_frames()
+        self.require_frames()
         idx = max(0, min(idx, self.n_frames - 1))
         clim = self.clim_auto_for_frame(idx) if auto_contrast else self.clim
         if auto_contrast:
             self.clim = clim
         payload = frame_to_image_bytes(
-            frames[idx],
+            self.display_frame(idx),
             clim,
             self.colormap,
             encoding=encoding,
@@ -208,7 +259,13 @@ class RheedSession:
     def mean_frame_png_b64(self):
         frames = self.require_frames()
         n_use = min(len(frames), 100)
-        mf = frames[:n_use].astype(np.float32).mean(axis=0)
+        if self.background_subtraction["enabled"]:
+            mf = np.zeros(self.shape, dtype=np.float32)
+            for i in range(n_use):
+                mf += self.display_frame(i).astype(np.float32)
+            mf /= max(n_use, 1)
+        else:
+            mf = frames[:n_use].astype(np.float32).mean(axis=0)
         mf_norm = mf / max(mf.max(), 1)
         arr = (mf_norm ** 0.4 * 255).astype(np.uint8)  # gamma 0.4 enhancement
         cmap_id = CV2_CMAPS.get(self.colormap)
@@ -222,9 +279,9 @@ class RheedSession:
     def export_frame_png(self, idx: int) -> bytes:
         """Raw PNG bytes for a single frame, rendered with the current
         contrast/colormap (i.e. exactly what's currently displayed)."""
-        frames = self.require_frames()
+        self.require_frames()
         idx = max(0, min(idx, self.n_frames - 1))
-        return frame_to_png_bytes(frames[idx], self.clim, self.colormap)
+        return frame_to_png_bytes(self.display_frame(idx), self.clim, self.colormap)
 
     def export_all_frames_zip(self) -> bytes:
         """ZIP archive containing every loaded frame as a numbered PNG,
@@ -257,9 +314,9 @@ class RheedSession:
         clipped outside [lo, hi] entirely — no slider tweak can recover
         signal that's been clipped to flat black/white. Letting the user
         re-auto on whichever frame they're currently viewing fixes that."""
-        frames = self.require_frames()
+        self.require_frames()
         idx = max(0, min(idx, self.n_frames - 1))
-        f = frames[idx]
+        f = self.display_frame(idx)
         return int(f.min()), int(f.max())
 
     def set_colormap(self, cmap: str):
@@ -269,7 +326,8 @@ class RheedSession:
 
     # ── ROI intensity ────────────────────────────────────────────────
     def compute_intensity(self, roi_type: str, roi: dict,
-                           display_w: float | None = None, display_h: float | None = None):
+                           display_w: float | None = None, display_h: float | None = None,
+                           use_background_subtraction: bool = False):
         """
         roi_type: 'circle' | 'rect' | 'line'
         roi: circle→{cx,cy,r}  rect→{x1,y1,x2,y2}  line→{x1,y1,x2,y2,width}
@@ -289,7 +347,13 @@ class RheedSession:
             mask = (xs - cx) ** 2 + (ys - cy) ** 2 <= r ** 2
             if not mask.any():
                 raise ValueError("ROI empty")
-            intensities = frames[:, mask].astype(np.float64).sum(axis=1).tolist()
+            if use_background_subtraction:
+                intensities = [
+                    float(self.analysis_frame(i, True)[mask].astype(np.float64).sum())
+                    for i in range(self.n_frames)
+                ]
+            else:
+                intensities = frames[:, mask].astype(np.float64).sum(axis=1).tolist()
 
         elif roi_type == "rect":
             x1 = int(round(min(roi["x1"], roi["x2"]) * sx))
@@ -300,7 +364,13 @@ class RheedSession:
             y1, y2 = max(0, y1), min(H, y2)
             if x2 <= x1 or y2 <= y1:
                 raise ValueError("ROI too small")
-            intensities = frames[:, y1:y2, x1:x2].astype(np.float64).sum(axis=(1, 2)).tolist()
+            if use_background_subtraction:
+                intensities = [
+                    float(self.analysis_frame(i, True)[y1:y2, x1:x2].astype(np.float64).sum())
+                    for i in range(self.n_frames)
+                ]
+            else:
+                intensities = frames[:, y1:y2, x1:x2].astype(np.float64).sum(axis=(1, 2)).tolist()
 
         elif roi_type == "line":
             x1, y1 = roi["x1"] * sx, roi["y1"] * sy
@@ -315,7 +385,11 @@ class RheedSession:
             dx = -(y2 - y1) / length
             dy = (x2 - x1) / length
             intensities = []
-            for frame in frames:
+            for frame_index, raw_frame in enumerate(frames):
+                frame = self.analysis_frame(
+                    frame_index,
+                    use_background_subtraction,
+                ) if use_background_subtraction else raw_frame
                 total, count = 0.0, 0
                 for offset in range(-half_w, half_w + 1):
                     ys_off = ys_line + offset * dy
@@ -477,7 +551,8 @@ class RheedSession:
                        x1: float | None = None, x2: float | None = None,
                        bg_method: str = "als", bg_params: dict | None = None,
                        prev_peaks: dict | None = None, vertical_track: bool = True,
-                       display_w: float | None = None, display_h: float | None = None):
+                       display_w: float | None = None, display_h: float | None = None,
+                       use_background_subtraction: bool = False):
         """
         Live single-frame preview: strip-sum a horizontal ROI on frame
         `idx`, subtract a background, and find the specular + two
@@ -485,8 +560,9 @@ class RheedSession:
         profile panel and to preview a background-subtraction method
         before committing to a full-video track.
         """
-        frames = self.require_frames()
+        self.require_frames()
         idx = max(0, min(idx, self.n_frames - 1))
+        frame = self.analysis_frame(idx, use_background_subtraction)
         H, W = self.shape
         dw = display_w or W
         dh = display_h or H
@@ -505,10 +581,10 @@ class RheedSession:
             if prev_peaks and prev_peaks.get("specular_x") is not None:
                 center_col = prev_peaks["specular_x"] - x0
             profile, band_lo_n, band_hi_n = _sp.strip_sum_profile_vtrack(
-                frames[idx], ny1, ny2, nx1, nx2, center_col=center_col)
+                frame, ny1, ny2, nx1, nx2, center_col=center_col)
             band_lo, band_hi = band_lo_n / sy, band_hi_n / sy  # → display px
         else:
-            profile = _sp.strip_sum_profile(frames[idx], ny1, ny2, nx1, nx2)
+            profile = _sp.strip_sum_profile(frame, ny1, ny2, nx1, nx2)
         baseline, subtracted = _sp.subtract_background(profile, bg_method, bg_params)
 
         # find_three_peaks works in LOCAL indices (0 = the strip's own
@@ -555,13 +631,15 @@ class RheedSession:
             },
             "all_peaks": all_peaks,
             "band_y": None if band_lo is None else [band_lo, band_hi],
+            "input_background_subtracted": bool(use_background_subtraction),
         }
 
     def strip_track(self, y1: float, y2: float, x1: float | None, x2: float | None,
                      bg_method: str, bg_params: dict | None,
                      scale_cm_px: float, l_cm: float, v_kev: float,
                      vertical_track: bool = True,
-                     display_w: float | None = None, display_h: float | None = None):
+                     display_w: float | None = None, display_h: float | None = None,
+                     use_background_subtraction: bool = False):
         """
         Run the strip-profile measurement across EVERY loaded frame,
         tracking the three peaks frame-to-frame (each frame's search is
@@ -601,7 +679,11 @@ class RheedSession:
         first_order_intensity_list = []
         lost_frames = 0
 
-        for frame in frames:
+        for frame_index, raw_frame in enumerate(frames):
+            frame = self.analysis_frame(
+                frame_index,
+                use_background_subtraction,
+            ) if use_background_subtraction else raw_frame
             if vertical_track:
                 # Center the band on the last-known specular column so the
                 # band follows the spots vertically across the sweep.
@@ -685,6 +767,7 @@ class RheedSession:
             )
 
         return {
+            "input_background_subtracted": bool(use_background_subtraction),
             "timestamps": self.timestamps.tolist(),
             "specular_x": specular_x, "left_x": left_x, "right_x": right_x,
             "avg_dx_px": avg_dx_list, "d_angstrom": d_list,

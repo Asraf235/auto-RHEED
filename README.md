@@ -17,7 +17,7 @@ Developed at Oak Ridge National Laboratory (ORNL).
 - **Local AI inference** — replaceable model adapters for frame embeddings, PCA/K-means clustering, RHAAPSODY changepoint detection with an interactive similarity-matrix plot, segmentation/tracking overlays, and future regression/classification models; frames and results remain on the local machine.
 - **Automatic result storage** — successful classical and AI analyses are written to a configurable local run folder instead of being retained only in browser/server memory.
 - **Library** — a persistent reference gallery of RHEED patterns by substrate.
-- **Publication-ready export** — every chart exports to CSV and to PNG with selectable font size and **600 DPI** (embedded); the frame viewer exports high-resolution annotated images.
+- **Publication-ready export** — every chart exports to CSV and to a transparent PNG with explicit physical figure size, font size, and embedded DPI; figures and high-resolution annotated Viewer images are saved beside the active dataset analysis.
 - **Colormaps** — perceptually-uniform Viridis/Plasma/Inferno/Magma and colorblind-safe Cividis, among others.
 
 ---
@@ -146,6 +146,14 @@ Analysis Storage**, enter another absolute local folder and click
 local, untracked `.auto_rheed_settings.json` file. The MCP server uses the same
 setting; `AUTO_RHEED_DATA_DIR` can override it for an MCP process.
 
+Saved plots and images use that same active run. Every analysis plot is
+automatically rendered to a stable, replaceable PNG after it is created or its
+interactive settings change. Automatic figures are **3.5 × 3.5 inches**, use
+**10-point fonts**, are rendered at **600 DPI**, and have transparent backgrounds.
+The manual PNG dialog can override those settings and optionally download a copy.
+PNGs are written to the run's `figures/` folder. Viewer and calibration images,
+individual rendered frames, and the all-frame ZIP also default to `figures/`.
+
 Reopening the exact same source file reconnects to its newest matching run by a
 content fingerprint. Use **Saved Results for this dataset** to activate an older
 matching run and recall a classical result or AI inference run. AI recall also
@@ -164,6 +172,8 @@ ai/<job>/{manifest.json,*.npy,frame_results.jsonl}
 ai/<job>/analyses/*.json       PCA/K-means and temporal metadata/results
 ai/<job>/analyses/*.csv        readable tabular post-analysis columns
 ai/<job>/analyses/*.npy        large matrices such as similarity data
+figures/*.png                   saved plots, Viewer frames, calibration images
+figures/rheed_frames.zip        optional rendered all-frame archive
 ```
 
 Classical files include intensity traces, calibration, peak and strip tracking,

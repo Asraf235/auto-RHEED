@@ -23,7 +23,7 @@ def _three_streak_frames() -> tuple[np.ndarray, np.ndarray]:
     return np.stack(frames), np.arange(4, dtype=float) * 0.25
 
 
-def _track(session: RheedSession) -> dict:
+def _track(session: RheedSession, use_background_subtraction: bool = False) -> dict:
     return session.strip_track(
         y1=0,
         y2=8,
@@ -37,6 +37,7 @@ def _track(session: RheedSession) -> dict:
         vertical_track=False,
         display_w=128,
         display_h=8,
+        use_background_subtraction=use_background_subtraction,
     )
 
 
@@ -97,6 +98,35 @@ def test_strip_track_returns_peak_intensities_and_first_order_fwhm():
     )
 
 
+def test_strip_preview_and_tracking_can_use_corrected_frames():
+    frames, timestamps = _three_streak_frames()
+    frames = frames + np.uint16(500)
+    session = RheedSession()
+    session._set_frames(frames, timestamps)
+    raw = session.strip_profile(
+        0, 0, 8, 0, 128,
+        bg_method="none",
+        vertical_track=False,
+        display_w=128,
+        display_h=8,
+    )
+    session.set_background_subtraction(True)
+
+    corrected = session.strip_profile(
+        0, 0, 8, 0, 128,
+        bg_method="none",
+        vertical_track=False,
+        display_w=128,
+        display_h=8,
+        use_background_subtraction=True,
+    )
+    tracked = _track(session, use_background_subtraction=True)
+
+    assert corrected["input_background_subtracted"] is True
+    assert tracked["input_background_subtracted"] is True
+    assert np.median(corrected["raw"]) < np.median(raw["raw"])
+
+
 def test_strip_track_route_persists_new_series(analysis_test_dir):
     import rheed_webapp.app as webapp
 
@@ -111,6 +141,7 @@ def test_strip_track_route_persists_new_series(analysis_test_dir):
     assert "Profile specular" in page_text
     assert "Profile 1st order (avg)" in page_text
     assert page_text.count('id="gr-fwhm-method"') == 1
+    assert page_text.count('id="gr-roi-use-background"') == 1
     assert page_text.index('id="gr-fwhm-method"') < page_text.index('id="gr-roi-btn"')
 
     response = client.post("/strip_track", json={

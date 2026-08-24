@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from rheed_core import AnalysisStore
 from rheed_core.inference import InferenceRunResult, ModelSpec
@@ -83,6 +84,22 @@ def test_analysis_store_round_trips_classical_and_inference(analysis_test_dir):
     assert np.array_equal(restored_matrix, matrix)
     assert len(store.list_artifacts()) == 2
     assert store.list_runs()[0]["source_label"] == "sample.mp4"
+
+
+def test_analysis_store_saves_named_exports_in_active_run(analysis_test_dir):
+    store = AnalysisStore(analysis_test_dir / "results")
+    run_dir = store.begin_dataset("sample.mp4", {"n_frames": 1}, dataset_version=1)
+
+    first = store.save_export("../../publication-figure.png", b"first-png")
+    assert first == run_dir / "figures" / "publication-figure.png"
+    assert first.read_bytes() == b"first-png"
+
+    repeated = store.save_export("publication-figure.png", b"latest-png")
+    assert repeated == first
+    assert repeated.read_bytes() == b"latest-png"
+
+    with pytest.raises(ValueError, match="PNG images and ZIP"):
+        store.save_export("figure.svg", b"svg")
 
 
 def test_analysis_store_resumes_exact_source_fingerprint(analysis_test_dir):

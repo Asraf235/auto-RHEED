@@ -424,6 +424,40 @@ def test_new_regression_adapter_uses_generic_frame_result_contract():
     assert "values" in result.summary()["frame_summaries"][0]
 
 
+def test_inference_applies_recorded_background_subtraction_to_every_batch():
+    frames = np.stack([
+        np.full((32, 40), 500, dtype=np.uint16),
+        np.full((32, 40), 900, dtype=np.uint16),
+        np.full((32, 40), 1300, dtype=np.uint16),
+    ])
+    source = frames.copy()
+    model = _spec("dummy-regression", "regression")
+    model = ModelSpec.from_dict({
+        **model.public_dict(),
+        "preprocessing": {
+            **model.preprocessing,
+            "background_subtraction": {
+                "method": "coarse_percentile",
+                "tile_size": 16,
+                "percentile": 40.0,
+                "smooth_sigma_tiles": 1.25,
+                "sample_step": 2,
+            },
+        },
+    })
+
+    result = run_inference(
+        frames,
+        np.arange(3, dtype=float),
+        model,
+        batch_size=2,
+    )
+
+    assert np.array_equal(frames, source)
+    assert [frame["values"]["roughness_nm"] for frame in result.frames] == [0.0, 0.0, 0.0]
+    assert result.metadata["preprocessing"]["config"]["background_subtraction"]["tile_size"] == 16
+
+
 def test_cancellation_stops_before_first_batch():
     with pytest.raises(InferenceCancelled):
         run_inference(
@@ -449,12 +483,38 @@ def test_flask_background_embedding_routes(analysis_test_dir):
     analysis_store.set_root(analysis_test_dir / "analysis")
     session._set_frames(_frames(6), np.arange(6, dtype=float))
     client = app.test_client()
+    background = client.post("/background_subtraction", json={
+        "enabled": True,
+        "frame_index": 0,
+    })
+    assert background.status_code == 200
+    assert background.get_json()["background_subtraction"] == {
+        "enabled": True,
+        "method": "coarse_percentile",
+        "tile_size": 96,
+        "percentile": 40.0,
+        "smooth_sigma_tiles": 1.25,
+        "sample_step": 2,
+    }
+    background_model = _spec().public_dict()
+    background_model["id"] = "background-test-model"
+    background_response = client.post("/ai/run", json={
+        "model": background_model,
+        "batch_size": 2,
+        "stride": 1,
+        "use_background_subtraction": True,
+    })
+    assert background_response.status_code == 202
+    assert background_response.get_json()["model"]["preprocessing"]["background_subtraction"]["tile_size"] == 96
+
     response = client.post("/ai/run", json={
         "model": _spec().public_dict(),
         "batch_size": 2,
         "stride": 1,
+        "use_background_subtraction": False,
     })
     assert response.status_code == 202
+    assert "background_subtraction" not in response.get_json()["model"]["preprocessing"]
     job_id = response.get_json()["job_id"]
 
     status = None
@@ -637,6 +697,14 @@ def test_growth_page_contains_ai_controls():
     assert b"gr-ai-temporal-run" in response.data
     assert b"gr-ai-temporal-matrix" in response.data
     assert b"gr-ai-sim-plotly" in response.data
+    assert b"gr-background-subtract" in response.data
+    assert b"gr-ai-use-background" in response.data
+    assert b"gr-roi-use-background" in response.data
+    assert b"gr-background-settings" in response.data
+    assert b"gr-background-tile" in response.data
+    assert b"gr-background-percentile" in response.data
+    assert b"gr-background-smooth" in response.data
+    assert b"gr-background-sample" in response.data
     assert b"gr-analysis-root" in response.data
     assert b"Automatic local saving" in response.data
 

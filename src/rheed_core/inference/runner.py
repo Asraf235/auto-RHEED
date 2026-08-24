@@ -8,7 +8,7 @@ from typing import Callable
 import numpy as np
 
 from .base import create_adapter
-from .preprocessing import build_preprocessing_context
+from .preprocessing import apply_input_transforms, build_preprocessing_context
 from .types import InferenceRunResult, ModelSpec
 
 
@@ -77,7 +77,8 @@ def run_inference(
             if cancelled and cancelled():
                 raise InferenceCancelled("Inference cancelled")
             batch_indices = frame_indices[offset:offset + effective_batch_size]
-            batch_result = adapter.infer_batch(frames[batch_indices], context)
+            batch_frames = apply_input_transforms(frames[batch_indices], spec.preprocessing)
+            batch_result = adapter.infer_batch(batch_frames, context)
             if descriptor.task == "embedding":
                 embeddings = np.asarray(batch_result.get("embeddings"), dtype=np.float32)
                 if embeddings.ndim != 2 or len(embeddings) != len(batch_indices):

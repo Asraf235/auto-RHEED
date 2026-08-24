@@ -55,6 +55,16 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _atomic_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.parent / f".tmp-{uuid.uuid4().hex}{path.suffix}"
+    try:
+        temporary.write_bytes(payload)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _is_csv_scalar(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, float, bool, np.generic))
 
@@ -533,6 +543,27 @@ class AnalysisStore:
                 replace=replace,
             )
             return index_entry
+
+    def save_export(self, filename: str, payload: bytes) -> Path:
+        """Atomically save a user-requested image/export beside analysis data.
+
+        Export names are reduced to a safe basename and written into the
+        active run's ``figures`` folder. Re-exporting the same named figure
+        replaces its previous version, matching the one-current-file behavior
+        used by interactive analysis artifacts.
+        """
+        if not isinstance(payload, bytes) or not payload:
+            raise ValueError("Export payload must contain bytes")
+        supplied = Path(str(filename or "")).name
+        suffix = Path(supplied).suffix.lower()
+        if suffix not in {".png", ".zip"}:
+            raise ValueError("Only PNG images and ZIP frame exports are supported")
+        safe_stem = _safe_part(Path(supplied).stem, "figure")
+        with self._lock:
+            dataset_dir = self.ensure_dataset()
+            target = dataset_dir / "figures" / f"{safe_stem}{suffix}"
+            _atomic_bytes(target, payload)
+            return target
 
     def save_inference(
         self,
