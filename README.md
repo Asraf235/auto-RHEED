@@ -15,6 +15,7 @@ Developed at Oak Ridge National Laboratory (ORNL).
 - **Streak FWHM & coherence length** — specular and nearest ±1 first-order streak widths (Gaussian fit or half-max), with specular width converted to in-plane coherence length, evolving per frame.
 - **Intensity vs time & growth rate** — per-ROI intensity oscillations plus background-subtracted specular/first-order strip-fit peak intensities (stacked, EMA-smoothed), and per-series FFT when the trace is complete.
 - **Local AI inference** — replaceable model adapters for frame embeddings, PCA/K-means clustering, RHAAPSODY changepoint detection with an interactive similarity-matrix plot, segmentation/tracking overlays, and future regression/classification models; frames and results remain on the local machine.
+- **Dynamical RHEED simulation** — the recommended `torch-rheed` adapter runs local PyTorch dynamical diffraction calculations from conventional `bulk.txt` and `surf.txt` inputs, with SP6 or multislice surface solvers and CPU/CUDA support. The dedicated Simulation tab plays, zooms, resizes, and measures synthetic detector stacks in millimetres and reciprocal-space units, recalls file-backed runs, automatically saves a GIF, and exports annotated PNG or normalized CSV/NPZ results. Other simulators can be installed through the same adapter contract.
 - **Automatic result storage** — successful classical and AI analyses are written to a configurable local run folder instead of being retained only in browser/server memory.
 - **Library** — a persistent reference gallery of RHEED patterns by substrate.
 - **Publication-ready export** — every chart exports to CSV and to a transparent PNG with explicit physical figure size, font size, and embedded DPI; figures and high-resolution annotated Viewer images are saved beside the active dataset analysis.
@@ -60,6 +61,30 @@ A separate FFT window can be opened per ROI to compare rates from different feat
 
 *(These correspond to Figures 3 and 4 of the associated manuscript.)*
 
+### Dynamical simulation with torch-rheed
+
+[`torch-rheed`](https://github.com/sumner-harris/torch-rheed) is the recommended
+dynamical simulation backend for Auto RHEED. It is a Python-native PyTorch
+implementation of the RHEED forward calculation described by
+sim-trhepd-rheed. Auto RHEED supplies the adapter and Simulation-tab workflow;
+the optional package supplies the dynamical bulk and surface diffraction
+calculation. It currently supports the electron/RHEED, single-domain, `p1`
+subset with SP6 and multislice surface solvers.
+
+Each run remains local and file-backed. The tab plots rocking curves and shows
+the optional synthetic detector stack with low-latency lossless playback, FPS
+control, zooming, resizing, and persistent line measurements in millimetres,
+Å⁻¹, and the corresponding `2π/|Δq|` real-space period. It automatically saves
+the detector stack as a GIF; the current annotated detector frame can also be
+saved as PNG. The simulation inputs, settings, package/runtime provenance,
+normalized arrays, measurements, and exports remain together under the run's
+`data/simulations/` folder.
+
+A ready-to-run SrTiO₃ [100] input pair is included under
+[`examples/simulations/srtio3-100`](examples/simulations/srtio3-100).
+Additional example systems can be added beside it without placing generated
+simulation results under version control.
+
 ---
 
 ## Installation
@@ -82,11 +107,24 @@ uv sync --extra yolo    # local YOLO-compatible instance segmentation
 uv sync --extra ai-all  # both adapters
 ```
 
+For dynamical RHEED simulation, the recommended installation is the optional
+`torch-rheed` extra. It requires Python 3.13 or newer and installs the pinned,
+tested GitHub revision without adding PyTorch to analysis-only installations:
+
+```bash
+uv sync --extra torch-rheed
+```
+
 In the app, open **Analysis**, load a dataset, and use the **Local AI
 Inference** card directly below **Growth Video** in the left sidebar.
 
 See [Local AI model inference](docs/AI_MODELS.md) for model manifests, offline
 operation, output formats, and writing adapters for new model families.
+
+Local scientific simulators use a separate, framework-neutral adapter contract.
+See [Local simulation adapters](docs/SIMULATION_ADAPTERS.md) for the normalized
+result schema, the Simulation tab, the recommended `torch-rheed` dynamical
+backend, local editable installation, and instructions for additional adapters.
 
 ---
 
@@ -212,6 +250,7 @@ src/
   rheed_core/      # All RHEED physics; no Flask. Owns the dataset + math.
     analysis_store.py   # file-backed analysis runs and random-access AI results
     inference/          # stable local-model contracts, adapters, PCA/K-means
+    simulation/         # stable simulator contracts, discovery, and adapters
     session.py         # frame render, ROI intensity, calibration, tracking, strip_track
     streak_profile.py  # strip-sum profiles, background subtraction, peaks, FWHM
     spectra.py         # intensity FFT -> growth rate

@@ -19,10 +19,12 @@ import tempfile
 import uuid
 
 from flask import Flask, request, jsonify, render_template, send_file
+import cv2
 import numpy as np
 
 from rheed_core import AnalysisStore, RheedSession
 from rheed_core.constants import CV2_CMAPS, IMAGE_EXTS
+from rheed_core.intensity_correction import build_intensity_correction
 from rheed_core.inference import (
     ModelManifestRegistry,
     ModelSpec,
@@ -30,7 +32,15 @@ from rheed_core.inference import (
     list_embedding_analysis_adapters,
 )
 from rheed_core.library import RheedLibrary
+from rheed_core.simulation import (
+    SimulationSpec,
+    SimulationStore,
+    create_simulation_adapter,
+    list_simulation_adapters,
+    measure_detector_distance,
+)
 from rheed_webapp.ai_jobs import AIJobManager
+from rheed_webapp.simulation_jobs import SimulationJobManager
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024 * 1024  # 16 GB
@@ -48,7 +58,7 @@ _MAX_RENDERED_FIGURE_BYTES = 256 * 1024 * 1024
 def _prevent_stale_dynamic_api_reads(response):
     """Polling and recall indexes must never be satisfied from browser cache."""
     path = request.path
-    is_job_status = bool(re.fullmatch(r"/ai/jobs/[^/]+", path))
+    is_job_status = bool(re.fullmatch(r"/(?:ai|simulation)/jobs/[^/]+", path))
     is_analysis_listing = path in {
         "/analysis/storage", "/analysis/runs", "/analysis/artifacts",
     }
@@ -58,9 +68,13 @@ def _prevent_stale_dynamic_api_reads(response):
         response.headers["Expires"] = "0"
     return response
 
-# One session per running web app process — matches the original
-# single-user, single-dataset-at-a-time behavior of this app.
+# One primary analysis session per running web app process — matches the
+# original single-user, single-active-dataset behavior of this app.
 session = RheedSession()
+# Optional, isolated source used only to measure a direct-beam correction.
+# Loading it never replaces the dataset being analyzed in ``session``.
+correction_reference_session = RheedSession()
+_correction_reference_label: str | None = None
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SETTINGS_PATH = _PROJECT_ROOT / ".auto_rheed_settings.json"
@@ -169,6 +183,8 @@ _MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "..", "..", "rheed_models")
 model_registry = ModelManifestRegistry(os.path.abspath(_MODEL_DIR))
 ai_jobs = AIJobManager(analysis_store)
+simulation_store = SimulationStore(_DEFAULT_ANALYSIS_DIR / "simulations")
+simulation_jobs = SimulationJobManager(simulation_store)
 
 
 def _save_upload_to_tmp(f):
@@ -377,7 +393,10 @@ def analysis_save_frame(idx):
     data = request.get_json(silent=True) or {}
     filename = str(data.get("filename") or f"rheed_frame_{idx + 1}.png")
     try:
-        return _save_export_response(filename, session.export_frame_png(idx))
+        return _save_export_response(
+            filename,
+            session.export_frame_png(idx, data.get("intensity_scale", 1.0)),
+        )
     except (IndexError, ValueError) as exc:
         return jsonify(error=str(exc)), 400
     except Exception as exc:
@@ -392,7 +411,10 @@ def analysis_save_all_frames():
     data = request.get_json(silent=True) or {}
     filename = str(data.get("filename") or "rheed_frames.zip")
     try:
-        return _save_export_response(filename, session.export_all_frames_zip())
+        return _save_export_response(
+            filename,
+            session.export_all_frames_zip(data.get("intensity_scales")),
+        )
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     except Exception as exc:
@@ -435,7 +457,13 @@ def get_frame(idx):
     if session.frames is None:
         return jsonify(error="No file loaded"), 400
     auto = request.args.get("auto", "0") == "1"
-    b64, t = session.frame_png_b64(idx, auto_contrast=auto)
+    try:
+        scale = float(request.args.get("intensity_scale", 1.0))
+        b64, t = session.frame_png_b64(
+            idx, auto_contrast=auto, intensity_scale=scale
+        )
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     resp = {"image": b64, "timestamp": t}
     if auto:
         resp["clim"] = list(session.clim)
@@ -458,6 +486,7 @@ def get_frame_image(idx):
             auto_contrast=auto,
             encoding=encoding,
             jpeg_quality=quality,
+            intensity_scale=float(request.args.get("intensity_scale", 1.0)),
         )
     except Exception as exc:
         return jsonify(error=str(exc)), 400
@@ -508,6 +537,150 @@ def intensity():
     except Exception as exc:
         return jsonify(error=f"Intensity computed but could not be saved: {exc}"), 500
     return jsonify(**result, _saved_artifact=artifact)
+
+
+@app.route("/intensity/batch", methods=["POST"])
+def intensity_batch():
+    """Measure several ROIs with one background-estimation pass per frame."""
+    data = request.get_json(silent=True) or {}
+    if session.frames is None:
+        return jsonify(error="No file loaded"), 400
+    rois = data.get("rois")
+    use_background = bool(data.get("use_background_subtraction", False))
+    try:
+        intensities, timestamps = session.compute_intensities(
+            rois,
+            display_w=data.get("display_w"),
+            display_h=data.get("display_h"),
+            use_background_subtraction=use_background,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(
+        series=[{"intensities": values} for values in intensities],
+        timestamps=timestamps,
+        input_background_subtracted=use_background,
+    )
+
+
+@app.route("/intensity_correction", methods=["POST"])
+def intensity_correction():
+    """Measure and persist a normalized direct-beam sensitivity curve."""
+    data = request.get_json(silent=True) or {}
+    if session.frames is None:
+        return jsonify(error="No file loaded"), 400
+    roi = data.get("roi") or {}
+    source_name = str(data.get("source") or "active")
+    if source_name not in {"active", "reference"}:
+        return jsonify(error="Correction source must be active or reference"), 400
+    source_session = (
+        correction_reference_session if source_name == "reference" else session
+    )
+    if source_session.frames is None:
+        return jsonify(error=f"No {source_name} correction video loaded"), 400
+    try:
+        intensities, timestamps = source_session.compute_intensity(
+            roi_type="rect",
+            roi=roi,
+            display_w=data.get("display_w"),
+            display_h=data.get("display_h"),
+            use_background_subtraction=bool(
+                data.get("use_background_subtraction", False)
+            ),
+        )
+        result = build_intensity_correction(
+            intensities,
+            smoothing_window=data.get("smoothing_window", 1),
+            max_factor=float(data.get("max_factor", 1000.0)),
+        )
+        result.update({
+            "timestamps": timestamps,
+            "roi": roi,
+            "dataset_version": session.dataset_version,
+            "source": source_name,
+            "source_label": (
+                _correction_reference_label
+                if source_name == "reference"
+                else _current_dataset_label
+            ),
+            "input_background_subtracted": bool(
+                data.get("use_background_subtraction", False)
+            ),
+        })
+        if source_name == "reference":
+            target_timestamps = np.asarray(session.timestamps, dtype=np.float64)
+            source_timestamps = np.asarray(timestamps, dtype=np.float64)
+            application_curve = np.interp(
+                target_timestamps,
+                source_timestamps,
+                np.asarray(result["application_curve"], dtype=np.float64),
+            )
+            result["application_timestamps"] = target_timestamps.tolist()
+            result["application_curve"] = application_curve.tolist()
+            result["correction_factors"] = (1.0 / application_curve).tolist()
+        else:
+            result["application_timestamps"] = list(timestamps)
+        source_label = (
+            _correction_reference_label
+            if source_name == "reference"
+            else _current_dataset_label
+        ) or "direct-beam"
+        correction_name = (
+            f"{Path(_current_dataset_label).stem}-from-"
+            f"{Path(source_label).stem}-direct-beam-v{session.dataset_version}"
+        )
+        correction_files = analysis_store.save_correction(correction_name, result)
+        result["correction_files"] = correction_files
+        artifact = _record_analysis(
+            "intensity-correction",
+            result,
+            parameters=data,
+            name="current",
+            replace=True,
+        )
+    except (TypeError, ValueError) as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        return jsonify(error=f"Correction measured but could not be saved: {exc}"), 500
+    return jsonify(
+        **result,
+        _saved_artifact=artifact,
+    )
+
+
+@app.route("/intensity_correction/reference", methods=["POST"])
+def load_intensity_correction_reference():
+    """Load a correction-only video without replacing the Analysis dataset."""
+    global _correction_reference_label
+    uploaded = request.files.get("file")
+    if uploaded is None:
+        return jsonify(error="No reference file"), 400
+    path, suffix, _ = _save_upload_to_tmp(uploaded)
+    try:
+        summary = correction_reference_session.load_file(path, suffix)
+        image, timestamp = correction_reference_session.frame_png_b64(0)
+        _correction_reference_label = uploaded.filename or "reference-video"
+    except Exception as exc:
+        return jsonify(error=f"Failed to load reference video: {exc}"), 400
+    finally:
+        os.unlink(path)
+    return jsonify(
+        **summary,
+        label=_correction_reference_label,
+        image=image,
+        timestamp=timestamp,
+    )
+
+
+@app.route("/intensity_correction/reference/frame/<int:idx>")
+def get_intensity_correction_reference_frame(idx):
+    if correction_reference_session.frames is None:
+        return jsonify(error="No reference video loaded"), 400
+    try:
+        image, timestamp = correction_reference_session.frame_png_b64(idx)
+    except (IndexError, ValueError) as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(image=image, timestamp=timestamp)
 
 
 @app.route("/clim", methods=["POST"])
@@ -763,13 +936,471 @@ def set_background_subtraction():
             bool(data.get("enabled", False)),
             config,
         )
-        lo, hi = session.clim_auto_for_frame(frame_index)
-        if hi <= lo:
-            hi = lo + 1
-        session.set_clim(lo, hi)
+        if bool(data.get("rescale_contrast", True)):
+            lo, hi = session.clim_auto_for_frame(frame_index)
+            if hi <= lo:
+                hi = lo + 1
+            session.set_clim(lo, hi)
+        else:
+            lo, hi = session.clim
     except (TypeError, ValueError) as exc:
         return jsonify(error=str(exc)), 400
     return jsonify(ok=True, background_subtraction=settings, clim=[lo, hi])
+
+
+# ── local simulation adapters ──────────────────────────────────────────────
+
+@app.route("/simulation/adapters")
+def simulation_adapters():
+    """List simulation adapters without importing optional runtimes."""
+    return jsonify(adapters=list_simulation_adapters())
+
+
+@app.route("/simulation/runs")
+def simulation_runs():
+    """List file-backed simulations independently of the active dataset."""
+    return jsonify(root=str(simulation_store.root), runs=simulation_store.list_runs())
+
+
+@app.route("/simulation/run", methods=["POST"])
+def simulation_run():
+    """Save uploaded adapter inputs and queue one local simulation."""
+    try:
+        raw_spec = request.form.get("simulation")
+        if not raw_spec:
+            raise ValueError("simulation manifest is required")
+        spec = SimulationSpec.from_dict(json.loads(raw_spec))
+        adapter = create_simulation_adapter(spec.adapter)
+        uploads = {}
+        for input_name in adapter.descriptor.input_names:
+            upload = request.files.get(input_name)
+            if upload is None or not upload.filename:
+                raise ValueError(f"Simulation input {input_name!r} is required")
+            uploads[input_name] = (upload.filename, upload.stream)
+        job = simulation_jobs.submit(
+            simulation=spec,
+            device=str(request.form.get("device") or "auto"),
+            uploads=uploads,
+        )
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        return jsonify(error=f"Could not start simulation: {exc}"), 400
+    return jsonify(job.public_dict()), 202
+
+
+@app.route("/simulation/jobs/<run_id>")
+def simulation_job_status(run_id):
+    try:
+        return jsonify(simulation_jobs.status(run_id))
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+
+
+@app.route("/simulation/jobs/<run_id>/cancel", methods=["POST"])
+def simulation_job_cancel(run_id):
+    try:
+        job = simulation_jobs.cancel(run_id)
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+    return jsonify(job.public_dict())
+
+
+def _simulation_result_payload(run_id: str) -> tuple[dict, object]:
+    stored = simulation_store.open(run_id)
+    result = stored.load_result(mmap_mode="r")
+    payload = {
+        "run_id": run_id,
+        "simulation": result.simulation.public_dict(),
+        "scan_coordinates": {
+            name: np.asarray(values).tolist()
+            for name, values in result.scan_coordinates.items()
+        },
+        "beam_indices": (
+            None if result.beam_indices is None else np.asarray(result.beam_indices).tolist()
+        ),
+        "intensities": (
+            None if result.intensities is None else np.asarray(result.intensities).tolist()
+        ),
+        "detector_image_shape": (
+            None if result.detector_images is None else list(result.detector_images.shape)
+        ),
+        "metadata": result.metadata,
+        "saved_to": str(stored.path),
+    }
+    return payload, result
+
+
+@app.route("/simulation/jobs/<run_id>/result")
+def simulation_job_result(run_id):
+    try:
+        payload, _ = _simulation_result_payload(run_id)
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+    except Exception as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(payload)
+
+
+def _simulation_frame_limits(frame: np.ndarray) -> tuple[float, float]:
+    values = np.asarray(frame, dtype=np.float32)
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return 0.0, 0.0
+    return float(finite.min()), float(finite.max())
+
+
+def _simulation_frame_image(
+    frame: np.ndarray,
+    scale: str,
+    cmap: str,
+    *,
+    limits: tuple[float, float] | None = None,
+) -> np.ndarray:
+    values = np.asarray(frame, dtype=np.float32)
+    low, high = limits if limits is not None else _simulation_frame_limits(values)
+    if high <= low:
+        normalized = np.zeros(values.shape, dtype=np.float32)
+    else:
+        normalized = np.clip((np.nan_to_num(values, nan=low) - low) / (high - low), 0, 1)
+    if scale == "sqrt":
+        normalized = np.sqrt(normalized)
+    elif scale == "log":
+        normalized = np.log1p(1000.0 * normalized) / np.log(1001.0)
+    elif scale != "linear":
+        raise ValueError("scale must be linear, sqrt, or log")
+    image = np.rint(normalized * 255).astype(np.uint8)
+    if cmap not in CV2_CMAPS:
+        raise ValueError(f"Unknown color map: {cmap}")
+    if CV2_CMAPS[cmap] is not None:
+        image = cv2.applyColorMap(image, CV2_CMAPS[cmap])
+    return image
+
+
+def _render_simulation_frame(
+    frame: np.ndarray,
+    scale: str,
+    cmap: str,
+    *,
+    encoding: str = "png",
+    jpeg_quality: int = 85,
+) -> bytes:
+    image = _simulation_frame_image(frame, scale, cmap)
+    if encoding == "jpeg":
+        if not 1 <= jpeg_quality <= 100:
+            raise ValueError("JPEG quality must be between 1 and 100")
+        extension = ".jpg"
+        parameters = [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
+    elif encoding == "png":
+        extension = ".png"
+        parameters = []
+    else:
+        raise ValueError("format must be jpeg or png")
+    ok, encoded = cv2.imencode(extension, image, parameters)
+    if not ok:
+        raise RuntimeError("Could not encode simulated detector frame")
+    return encoded.tobytes()
+
+
+@app.route("/simulation/jobs/<run_id>/frame/<int:index>")
+def simulation_job_frame(run_id, index):
+    try:
+        encoding = str(request.args.get("format") or "png").lower()
+        frame = simulation_store.open(run_id).detector_frame(index)
+        payload = _render_simulation_frame(
+            frame,
+            str(request.args.get("scale") or "sqrt"),
+            str(request.args.get("cmap") or "inferno"),
+            encoding=encoding,
+            jpeg_quality=int(request.args.get("quality") or 85),
+        )
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+    except IndexError as exc:
+        return jsonify(error=str(exc)), 404
+    except Exception as exc:
+        return jsonify(error=str(exc)), 400
+    response = send_file(
+        io.BytesIO(payload),
+        mimetype="image/jpeg" if encoding == "jpeg" else "image/png",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _save_simulation_export(stored, filename: str, payload: bytes) -> Path:
+    export_dir = stored.path / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    target = export_dir / filename
+    temporary = export_dir / f".{filename}.{uuid.uuid4().hex}.tmp"
+    temporary.write_bytes(payload)
+    os.replace(temporary, target)
+    return target
+
+
+@app.route("/simulation/jobs/<run_id>/image/<int:index>", methods=["GET", "POST"])
+def simulation_job_image(run_id, index):
+    """Save and download one rendered detector frame, optionally with browser overlays."""
+    try:
+        stored = simulation_store.open(run_id)
+        native_frame = stored.detector_frame(index)
+        if request.method == "POST":
+            upload = request.files.get("image")
+            if upload is None:
+                raise ValueError("An image upload is required")
+            uploaded = upload.read(64 * 1024 * 1024 + 1)
+            if len(uploaded) > 64 * 1024 * 1024:
+                raise ValueError("Rendered image is too large")
+            decoded = cv2.imdecode(np.frombuffer(uploaded, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+            if decoded is None or decoded.shape[:2] != native_frame.shape:
+                raise ValueError("Rendered image dimensions must match the detector frame")
+            ok, encoded = cv2.imencode(".png", decoded)
+            if not ok:
+                raise ValueError("Could not encode the uploaded detector image")
+            payload = encoded.tobytes()
+        else:
+            payload = _render_simulation_frame(
+                native_frame,
+                str(request.args.get("scale") or "sqrt"),
+                str(request.args.get("cmap") or "inferno"),
+            )
+        filename = f"screen_frame_{index + 1:04d}.png"
+        target = _save_simulation_export(stored, filename, payload)
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+    except IndexError as exc:
+        return jsonify(error=str(exc)), 404
+    except Exception as exc:
+        return jsonify(error=str(exc)), 400
+    return send_file(target, mimetype="image/png", as_attachment=True, download_name=filename)
+
+
+def _save_detector_gif(
+    stored,
+    result,
+    *,
+    fps: float = 7.0,
+    frame_step: int = 1,
+    normalize: str = "global",
+    scale: str = "sqrt",
+    cmap: str = "inferno",
+) -> Path:
+    """Render a detector stack once for automatic and on-demand GIF exports."""
+    from PIL import Image
+
+    if result.detector_images is None:
+        raise ValueError("This simulation has no detector images")
+    if not np.isfinite(fps) or not 0.1 <= fps <= 60:
+        raise ValueError("GIF fps must be between 0.1 and 60")
+    if frame_step < 1:
+        raise ValueError("GIF frame step must be at least 1")
+    if normalize not in {"global", "per-frame"}:
+        raise ValueError("GIF normalization must be global or per-frame")
+    indices = list(range(0, len(result.detector_images), frame_step))
+    if indices[-1] != len(result.detector_images) - 1:
+        indices.append(len(result.detector_images) - 1)
+    limits = None
+    if normalize == "global":
+        low = float("inf")
+        high = float("-inf")
+        for index_value in indices:
+            frame_low, frame_high = _simulation_frame_limits(result.detector_images[index_value])
+            low = min(low, frame_low)
+            high = max(high, frame_high)
+        limits = (low, high)
+
+    frames = []
+    for index_value in indices:
+        rendered = _simulation_frame_image(
+            result.detector_images[index_value],
+            scale,
+            cmap,
+            limits=limits,
+        )
+        if rendered.ndim == 2:
+            frame = Image.fromarray(rendered, mode="L")
+        else:
+            frame = Image.fromarray(cv2.cvtColor(rendered, cv2.COLOR_BGR2RGB), mode="RGB")
+        frames.append(frame.convert("P", palette=Image.Palette.ADAPTIVE))
+        frame.close()
+    stream = io.BytesIO()
+    try:
+        frames[0].save(
+            stream,
+            format="GIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=max(1, round(1000.0 / fps)),
+            loop=0,
+            disposal=2,
+        )
+    finally:
+        for frame in frames:
+            frame.close()
+    return _save_simulation_export(stored, "screen_animation.gif", stream.getvalue())
+
+
+def _auto_save_detector_gif(stored, result) -> None:
+    if result.detector_images is None:
+        return
+    screen = (result.metadata.get("result") or {}).get("screen") or {}
+    _save_detector_gif(
+        stored,
+        result,
+        fps=7.0,
+        normalize="global",
+        scale=str(screen.get("display_scale") or "sqrt"),
+        cmap=str(screen.get("colormap") or "inferno"),
+    )
+
+
+simulation_jobs.set_completed_callback(_auto_save_detector_gif)
+
+
+@app.route("/simulation/jobs/<run_id>/gif")
+def simulation_job_gif(run_id):
+    """Regenerate and download an animated GIF from the detector stack."""
+    try:
+        stored = simulation_store.open(run_id)
+        result = stored.load_result(mmap_mode="r")
+        filename = "screen_animation.gif"
+        target = _save_detector_gif(
+            stored,
+            result,
+            fps=float(request.args.get("fps") or 7),
+            frame_step=int(request.args.get("step") or 1),
+            normalize=str(request.args.get("normalize") or "global"),
+            scale=str(request.args.get("scale") or "sqrt"),
+            cmap=str(request.args.get("cmap") or "inferno"),
+        )
+    except ImportError:
+        return jsonify(error="GIF export requires Pillow from the torch-rheed optional runtime"), 400
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+    except Exception as exc:
+        return jsonify(error=str(exc)), 400
+    return send_file(target, mimetype="image/gif", as_attachment=True, download_name=filename)
+
+
+def _simulation_measurement_context(stored, result) -> tuple[dict, float, tuple[int, int]]:
+    if result.detector_images is None:
+        raise ValueError("This simulation has no detector images")
+    adapter_metadata = result.metadata.get("result") or {}
+    screen = adapter_metadata.get("screen")
+    if not isinstance(screen, dict):
+        raise ValueError("The simulation did not record detector geometry")
+    energy = adapter_metadata.get("beam_energy_kev")
+    if energy is None:
+        input_root = (stored.path / "inputs").resolve()
+        archived_inputs = {}
+        for name, provenance in (result.metadata.get("inputs") or {}).items():
+            if not isinstance(provenance, dict) or not provenance.get("path"):
+                continue
+            candidate = Path(provenance["path"]).resolve()
+            if candidate.is_file() and candidate.is_relative_to(input_root):
+                archived_inputs[str(name)] = candidate
+        adapter = create_simulation_adapter(result.simulation.adapter)
+        try:
+            recovered = adapter.recover_result_metadata(archived_inputs)
+        finally:
+            adapter.close()
+        energy = recovered.get("beam_energy_kev")
+    if energy is None:
+        raise ValueError("The simulation did not record beam energy and it could not be recovered from its archived inputs")
+    return screen, float(energy), tuple(result.detector_images.shape[1:])
+
+
+@app.route("/simulation/jobs/<run_id>/measurements", methods=["GET", "PUT"])
+def simulation_job_measurements(run_id):
+    """Recall or replace native-pixel detector measurements for one saved run."""
+    try:
+        stored = simulation_store.open(run_id)
+        if request.method == "GET":
+            return jsonify(measurements=stored.load_measurements())
+        data = request.get_json() or {}
+        submitted = data.get("measurements")
+        if not isinstance(submitted, list):
+            raise ValueError("measurements must be a list")
+        if len(submitted) > 1000:
+            raise ValueError("At most 1000 measurements can be saved per simulation")
+        result = stored.load_result(mmap_mode="r")
+        screen, energy, image_shape = _simulation_measurement_context(stored, result)
+        measurements = []
+        for index_value, item in enumerate(submitted):
+            if not isinstance(item, dict):
+                raise ValueError("Each measurement must be an object")
+            frame_index = int(item.get("frame_index", 0))
+            if not 0 <= frame_index < result.n_samples:
+                raise ValueError("Measurement frame index is out of range")
+            physical = measure_detector_distance(
+                item.get("point1"),
+                item.get("point2"),
+                image_shape=image_shape,
+                screen=screen,
+                beam_energy_kev=energy,
+            )
+            measurements.append({
+                "id": str(item.get("id") or uuid.uuid4().hex),
+                "label": str(item.get("label") or f"M{index_value + 1}")[:80],
+                "color": str(item.get("color") or "#22d3ee")[:16],
+                "frame_index": frame_index,
+                "point1": physical["point1_px"],
+                "point2": physical["point2_px"],
+                "physical": physical,
+            })
+        simulation_store.save_measurements(run_id, measurements)
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+    except Exception as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(measurements=measurements, saved_to=str(stored.path / "measurements.json"))
+
+
+@app.route("/simulation/jobs/<run_id>/download")
+def simulation_job_download(run_id):
+    try:
+        result = simulation_store.open(run_id).load_result()
+        payload = result.to_npz_bytes()
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+    except Exception as exc:
+        return jsonify(error=str(exc)), 400
+    safe_id = re.sub(r"[^A-Za-z0-9._-]+", "-", result.simulation.id).strip(".-") or "simulation"
+    return send_file(
+        io.BytesIO(payload),
+        mimetype="application/octet-stream",
+        as_attachment=True,
+        download_name=f"rheed_simulation_{safe_id}.npz",
+    )
+
+
+@app.route("/simulation/jobs/<run_id>/csv")
+def simulation_job_csv(run_id):
+    try:
+        result = simulation_store.open(run_id).load_result(mmap_mode="r")
+        if result.intensities is None or result.beam_indices is None:
+            raise ValueError("This simulation does not contain beam intensities")
+        stream = io.StringIO(newline="")
+        writer = csv.writer(stream)
+        coordinate_names = list(result.scan_coordinates)
+        beam_labels = [f"beam_{int(h)}_{int(k)}" for h, k in result.beam_indices]
+        writer.writerow([*coordinate_names, *beam_labels])
+        for index in range(result.n_samples):
+            writer.writerow([
+                *[float(result.scan_coordinates[name][index]) for name in coordinate_names],
+                *[float(value) for value in result.intensities[index]],
+            ])
+        payload = stream.getvalue().encode("utf-8-sig")
+    except KeyError as exc:
+        return jsonify(error=str(exc)), 404
+    except Exception as exc:
+        return jsonify(error=str(exc)), 400
+    return send_file(
+        io.BytesIO(payload),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=f"rheed_simulation_{run_id}.csv",
+    )
 
 
 # ── local AI inference ─────────────────────────────────────────────────────
@@ -1450,4 +2081,15 @@ def create_shortcut():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=int(os.environ.get("PORT", 5000)))
+    # Werkzeug's reloader can leave nested Python launcher processes behind on
+    # Windows, with stale processes continuing to share the listening socket.
+    # Desktop launches therefore use one server process unless a developer opts
+    # into source reloading explicitly.
+    use_reloader = os.environ.get("RHEED_USE_RELOADER", "").lower() in {
+        "1", "true", "yes", "on",
+    }
+    app.run(
+        debug=True,
+        use_reloader=use_reloader,
+        port=int(os.environ.get("PORT", 5000)),
+    )

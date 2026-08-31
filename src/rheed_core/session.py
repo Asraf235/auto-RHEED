@@ -8,6 +8,7 @@ directly. Each consumer (the web app, an MCP server) owns its own
 RheedSession instance — there is no hidden global state in this module.
 """
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import io
 import zipfile
 
@@ -216,7 +217,28 @@ class RheedSession:
             )
         return self.display_frame(idx)
 
-    def frame_png_b64(self, idx: int, auto_contrast: bool = False):
+    @staticmethod
+    def _validate_intensity_scale(intensity_scale: float) -> float:
+        scale = float(intensity_scale)
+        if not np.isfinite(scale) or scale <= 0 or scale > 1_000_000:
+            raise ValueError("intensity_scale must be finite and in (0, 1000000]")
+        return scale
+
+    def corrected_display_frame(self, idx: int, intensity_scale: float = 1.0):
+        """Return a display-only current-normalized frame.
+
+        This never replaces or mutates ``frames``; quantitative analyses keep
+        operating on the native loaded pixels.
+        """
+        scale = self._validate_intensity_scale(intensity_scale)
+        frame = self.display_frame(idx)
+        if scale == 1.0:
+            return frame
+        return frame.astype(np.float32) * scale
+
+    def frame_png_b64(
+        self, idx: int, auto_contrast: bool = False, intensity_scale: float = 1.0
+    ):
         """auto_contrast=True recomputes clim from THIS frame (and stores
         it as the current clim, so the UI sliders stay in sync) instead
         of using the existing self.clim — lets a "per-frame auto" mode
@@ -228,7 +250,9 @@ class RheedSession:
         if auto_contrast:
             clim = self.clim_auto_for_frame(idx)
             self.clim = clim
-        b64 = frame_to_png_b64(self.display_frame(idx), clim, self.colormap)
+        b64 = frame_to_png_b64(
+            self.corrected_display_frame(idx, intensity_scale), clim, self.colormap
+        )
         t = float(self.timestamps[idx]) if self.timestamps is not None else idx
         return b64, round(t, 4)
 
@@ -239,6 +263,7 @@ class RheedSession:
         auto_contrast: bool = False,
         encoding: str = "jpeg",
         jpeg_quality: int = 90,
+        intensity_scale: float = 1.0,
     ):
         """Binary frame response used by the latency-sensitive browser player."""
         self.require_frames()
@@ -247,7 +272,7 @@ class RheedSession:
         if auto_contrast:
             self.clim = clim
         payload = frame_to_image_bytes(
-            self.display_frame(idx),
+            self.corrected_display_frame(idx, intensity_scale),
             clim,
             self.colormap,
             encoding=encoding,
@@ -276,23 +301,37 @@ class RheedSession:
         return b64, int(arr.shape[1]), int(arr.shape[0])
 
     # ── export ───────────────────────────────────────────────────────
-    def export_frame_png(self, idx: int) -> bytes:
+    def export_frame_png(self, idx: int, intensity_scale: float = 1.0) -> bytes:
         """Raw PNG bytes for a single frame, rendered with the current
         contrast/colormap (i.e. exactly what's currently displayed)."""
         self.require_frames()
         idx = max(0, min(idx, self.n_frames - 1))
-        return frame_to_png_bytes(self.display_frame(idx), self.clim, self.colormap)
+        return frame_to_png_bytes(
+            self.corrected_display_frame(idx, intensity_scale),
+            self.clim,
+            self.colormap,
+        )
 
-    def export_all_frames_zip(self) -> bytes:
+    def export_all_frames_zip(self, intensity_scales=None) -> bytes:
         """ZIP archive containing every loaded frame as a numbered PNG,
         rendered with the current contrast/colormap."""
         self.require_frames()
+        if intensity_scales is None:
+            scales = np.ones(self.n_frames, dtype=np.float64)
+        else:
+            scales = np.asarray(intensity_scales, dtype=np.float64)
+            if scales.ndim != 1 or scales.size != self.n_frames:
+                raise ValueError("intensity_scales must contain one value per frame")
+            scales = np.asarray(
+                [self._validate_intensity_scale(value) for value in scales],
+                dtype=np.float64,
+            )
         n_digits = max(4, len(str(self.n_frames - 1)))
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for i in range(self.n_frames):
                 name = f"frame_{i:0{n_digits}d}.png"
-                zf.writestr(name, self.export_frame_png(i))
+                zf.writestr(name, self.export_frame_png(i, scales[i]))
         return buf.getvalue()
 
     # ── transforms ───────────────────────────────────────────────────
@@ -325,6 +364,133 @@ class RheedSession:
         self.colormap = cmap
 
     # ── ROI intensity ────────────────────────────────────────────────
+    def _intensity_sampler(self, roi_type: str, roi: dict,
+                           display_w: float | None = None,
+                           display_h: float | None = None):
+        """Compile one display-coordinate ROI into a native-frame sampler."""
+        H, W = self.shape
+        dw = display_w or W
+        dh = display_h or H
+        sx, sy = W / dw, H / dh
+
+        if roi_type == "circle":
+            cx, cy = roi["cx"] * sx, roi["cy"] * sy
+            radius = roi["r"] * min(sx, sy)
+            ys, xs = np.ogrid[:H, :W]
+            mask = (xs - cx) ** 2 + (ys - cy) ** 2 <= radius ** 2
+            if not mask.any():
+                raise ValueError("ROI empty")
+
+            def sample_circle(frame):
+                return float(frame[mask].astype(np.float64).sum())
+
+            return sample_circle
+
+        if roi_type == "rect":
+            x1 = int(round(min(roi["x1"], roi["x2"]) * sx))
+            x2 = int(round(max(roi["x1"], roi["x2"]) * sx))
+            y1 = int(round(min(roi["y1"], roi["y2"]) * sy))
+            y2 = int(round(max(roi["y1"], roi["y2"]) * sy))
+            x1, x2 = max(0, x1), min(W, x2)
+            y1, y2 = max(0, y1), min(H, y2)
+            if x2 <= x1 or y2 <= y1:
+                raise ValueError("ROI too small")
+
+            def sample_rect(frame):
+                return float(frame[y1:y2, x1:x2].astype(np.float64).sum())
+
+            return sample_rect
+
+        if roi_type == "line":
+            x1, y1 = roi["x1"] * sx, roi["y1"] * sy
+            x2, y2 = roi["x2"] * sx, roi["y2"] * sy
+            half_w = max(1, int(round(roi.get("width", 3) * min(sx, sy))))
+            length = int(np.hypot(x2 - x1, y2 - y1))
+            if length < 2:
+                raise ValueError("Line too short")
+            t_vals = np.linspace(0, 1, length)
+            xs_line = x1 + t_vals * (x2 - x1)
+            ys_line = y1 + t_vals * (y2 - y1)
+            dx = -(y2 - y1) / length
+            dy = (x2 - x1) / length
+            offsets = np.arange(-half_w, half_w + 1, dtype=np.float64)[:, None]
+            sample_xs = xs_line[None, :] + offsets * dx
+            sample_ys = ys_line[None, :] + offsets * dy
+
+            def sample_line(frame):
+                values = map_coordinates(
+                    frame.astype(np.float64),
+                    [sample_ys.ravel(), sample_xs.ravel()],
+                    order=1,
+                    mode="nearest",
+                )
+                return float(values.mean()) if values.size else 0.0
+
+            return sample_line
+
+        raise ValueError(f"Unknown ROI type: {roi_type}")
+
+    def compute_intensities(self, rois: list[dict],
+                            display_w: float | None = None,
+                            display_h: float | None = None,
+                            use_background_subtraction: bool = False):
+        """Measure several ROIs while transforming each source frame once.
+
+        Broad-background estimation is a full-frame operation. Batching ROIs
+        here prevents the expensive estimate from being repeated for every ROI.
+        """
+        if not isinstance(rois, list) or not rois:
+            raise ValueError("At least one ROI is required")
+        if len(rois) > 100:
+            raise ValueError("At most 100 ROIs can be measured at once")
+        self.require_frames()
+
+        if not use_background_subtraction:
+            results = [
+                self.compute_intensity(
+                    roi.get("type", "circle"),
+                    roi,
+                    display_w,
+                    display_h,
+                    False,
+                )[0]
+                for roi in rois
+            ]
+            return results, self.timestamps.tolist()
+
+        if not self.background_subtraction["enabled"]:
+            raise ValueError(
+                "Background subtraction must be enabled before ROI analyses can use it"
+            )
+        samplers = [
+            self._intensity_sampler(
+                roi.get("type", "circle"), roi, display_w, display_h
+            )
+            for roi in rois
+        ]
+        results = [[] for _ in samplers]
+        frames = self.require_frames()
+        settings = self.inference_background_config()
+
+        def measure_frame(raw_frame):
+            frame = subtract_coarse_percentile_background(raw_frame, settings)
+            return [sampler(frame) for sampler in samplers]
+
+        # NumPy percentile estimation and OpenCV interpolation release the GIL.
+        # A small bounded pool speeds long videos without duplicating the whole
+        # corrected stack in memory or oversubscribing the local workstation.
+        if self.n_frames >= 8:
+            with ThreadPoolExecutor(max_workers=min(4, self.n_frames)) as executor:
+                measured_frames = executor.map(measure_frame, frames)
+                for measured in measured_frames:
+                    for values, value in zip(results, measured):
+                        values.append(value)
+        else:
+            for raw_frame in frames:
+                for values, value in zip(results, measure_frame(raw_frame)):
+                    values.append(value)
+        return results, self.timestamps.tolist()
+
     def compute_intensity(self, roi_type: str, roi: dict,
                            display_w: float | None = None, display_h: float | None = None,
                            use_background_subtraction: bool = False):
@@ -335,6 +501,14 @@ class RheedSession:
         None (or the native W/H) if `roi` is already in native pixel space.
         """
         frames = self.require_frames()
+        if use_background_subtraction:
+            series, timestamps = self.compute_intensities(
+                [{**roi, "type": roi_type}],
+                display_w,
+                display_h,
+                True,
+            )
+            return series[0], timestamps
         H, W = self.shape
         dw = display_w or W
         dh = display_h or H
@@ -347,13 +521,7 @@ class RheedSession:
             mask = (xs - cx) ** 2 + (ys - cy) ** 2 <= r ** 2
             if not mask.any():
                 raise ValueError("ROI empty")
-            if use_background_subtraction:
-                intensities = [
-                    float(self.analysis_frame(i, True)[mask].astype(np.float64).sum())
-                    for i in range(self.n_frames)
-                ]
-            else:
-                intensities = frames[:, mask].astype(np.float64).sum(axis=1).tolist()
+            intensities = frames[:, mask].astype(np.float64).sum(axis=1).tolist()
 
         elif roi_type == "rect":
             x1 = int(round(min(roi["x1"], roi["x2"]) * sx))
@@ -364,13 +532,7 @@ class RheedSession:
             y1, y2 = max(0, y1), min(H, y2)
             if x2 <= x1 or y2 <= y1:
                 raise ValueError("ROI too small")
-            if use_background_subtraction:
-                intensities = [
-                    float(self.analysis_frame(i, True)[y1:y2, x1:x2].astype(np.float64).sum())
-                    for i in range(self.n_frames)
-                ]
-            else:
-                intensities = frames[:, y1:y2, x1:x2].astype(np.float64).sum(axis=(1, 2)).tolist()
+            intensities = frames[:, y1:y2, x1:x2].astype(np.float64).sum(axis=(1, 2)).tolist()
 
         elif roi_type == "line":
             x1, y1 = roi["x1"] * sx, roi["y1"] * sy
@@ -385,16 +547,13 @@ class RheedSession:
             dx = -(y2 - y1) / length
             dy = (x2 - x1) / length
             intensities = []
-            for frame_index, raw_frame in enumerate(frames):
-                frame = self.analysis_frame(
-                    frame_index,
-                    use_background_subtraction,
-                ) if use_background_subtraction else raw_frame
+            for raw_frame in frames:
+                frame_float = raw_frame.astype(np.float64)
                 total, count = 0.0, 0
                 for offset in range(-half_w, half_w + 1):
                     ys_off = ys_line + offset * dy
                     xs_off = xs_line + offset * dx
-                    vals = map_coordinates(frame.astype(np.float64),
+                    vals = map_coordinates(frame_float,
                                             [ys_off, xs_off], order=1, mode="nearest")
                     total += vals.sum()
                     count += len(vals)

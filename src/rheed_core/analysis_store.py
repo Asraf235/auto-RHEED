@@ -132,6 +132,9 @@ def _write_csv_exports(target_json: Path, result: dict[str, Any]) -> list[Path]:
             if f"{label}_raw" in direct:
                 label = f"{label}-{index + 1}"
             direct[f"{label}_raw"] = raw
+            corrected = _csv_series(row.get("current_corrected_intensities"))
+            if corrected is not None:
+                direct[f"{label}_current_corrected"] = corrected
             smoothed = _csv_series(row.get("ema_intensities"))
             if smoothed is not None:
                 alpha = row.get("ema_alpha")
@@ -564,6 +567,20 @@ class AnalysisStore:
             target = dataset_dir / "figures" / f"{safe_stem}{suffix}"
             _atomic_bytes(target, payload)
             return target
+
+    def save_correction(self, name: str, payload: dict[str, Any]) -> dict[str, str]:
+        """Save a reusable direct-beam correction under ``root/corrections``."""
+        safe_name = _safe_part(name, "intensity-correction")
+        target = self._root / "corrections" / f"{safe_name}.json"
+        normalized = _json_value(payload)
+        with self._lock:
+            _atomic_json(target, normalized)
+            csv_paths = _write_csv_exports(target, normalized)
+            _remove_stale_csv_exports(target, csv_paths)
+        return {
+            "json": str(target),
+            "csv": str(target.with_suffix(".csv")),
+        }
 
     def save_inference(
         self,

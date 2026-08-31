@@ -31,6 +31,10 @@ yolo = [
     "scikit-learn>=1.4,<2",
     "ultralytics>=8.3,<9",
 ]
+torch-rheed = [
+    "pillow>=10",
+    "torch-rheed @ git+https://github.com/sumner-harris/torch-rheed.git@3323965bf5e358e9346c8a3e5ced5df3f5b03809 ; python_version >= '3.13'",
+]
 ai-all = [
     "lap>=0.5.12,<1",
     "scikit-learn>=1.4,<2",

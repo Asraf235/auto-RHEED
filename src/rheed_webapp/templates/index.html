@@ -235,7 +235,7 @@
   }
 
   /* resize handle — bottom-right corner of viewer */
-  #viewer-resize-handle, #gr-viewer-resize-handle {
+  #viewer-resize-handle, #gr-viewer-resize-handle, #sim-viewer-resize-handle {
     position: absolute; bottom: 0; right: 0;
     width: 18px; height: 18px;
     cursor: nwse-resize; z-index: 20;
@@ -243,7 +243,7 @@
                 linear-gradient(135deg, transparent 60%, #4b5563 60%, #4b5563 80%, transparent 80%);
     opacity: 0.6;
   }
-  #viewer-resize-handle:hover, #gr-viewer-resize-handle:hover { opacity: 1; }
+  #viewer-resize-handle:hover, #gr-viewer-resize-handle:hover, #sim-viewer-resize-handle:hover { opacity: 1; }
 
   .viewer-titlebar {
     display: flex; align-items: center;
@@ -613,20 +613,50 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   #loading p { color: #94a3b8; font-size: .88rem; }
 
-  /* ─── Calibration tab ───────────────────────────────────────── */
+  /* ─── Intensity Correction tab ──────────────────────────────── */
   #tab-calib { flex-direction: row; }
-
-  .calib-step { color: #475569; transition: color .2s; }
-  .calib-step.active-step { color: #e2e8f0; font-weight: 600; }
-  .calib-step.done-step   { color: #4ade80; }
-  .calib-step.done-step::marker { content: '✓ '; }
-
-  #calib-result-table td {
-    padding: 3px 6px; border-bottom: 1px solid #1e293b;
+  #corr-workspace { display:flex; width:100%; min-width:0; min-height:0; }
+  #corr-sidebar { width:280px; min-width:240px; overflow-y:auto; padding:10px; background:#13151f; border-right:1px solid #2d3148; }
+  #corr-main { flex:1; min-width:0; min-height:0; display:grid; grid-template-rows:minmax(300px, 55%) minmax(180px, 45%); background:#090b11; }
+  #corr-viewer-center { width:100%; min-width:0; min-height:0; }
+  #corr-viewer-titlebar { cursor:default; }
+  #corr-canvas-wrap { min-height:0; }
+  #corr-frame-canvas { display:block; flex-shrink:0; cursor:crosshair; }
+  #corr-roi-canvas { position:absolute; top:0; left:0; pointer-events:none; }
+  #corr-frame-slider { flex:1; min-width:90px; accent-color:#7dd3fc; cursor:pointer; }
+  #corr-frame-label { font-size:.78rem;color:#94a3b8;white-space:nowrap;min-width:160px;text-align:right; }
+  #corr-chart { min-height:0; border-top:1px solid #2d3148; }
+  @media (max-width: 760px) {
+    #corr-workspace { flex-direction:column; }
+    #corr-sidebar { width:auto; max-height:42%; border-right:0; border-bottom:1px solid #2d3148; }
   }
-  #calib-result-table td:first-child { color: #94a3b8; }
-  #calib-result-table td:last-child  { color: #7dd3fc; font-weight: 600; text-align: right; }
-  #calib-result-table tr.highlight td { background: #1e3a5f; }
+
+  /* ─── Simulation tab ────────────────────────────────────────── */
+  #tab-simulation { flex-direction: row; min-width: 0; min-height: 0; }
+  #sim-sidebar { width: 360px; max-width: 460px; min-width: 280px; }
+  #sim-main { flex:1; min-width:0; min-height:0; display:grid; grid-template-rows:minmax(300px, 58%) minmax(210px, 42%); background:#090b11; }
+  #sim-detector-panel { min-width:0; min-height:0; display:flex; flex-direction:column; }
+  #sim-detector-titlebar { cursor:move; }
+  #sim-detector-stage { min-height:0; background:#050609; }
+  #sim-detector-canvas { display:none; flex-shrink:0; }
+  #sim-measure-canvas { position:absolute;top:0;left:0;pointer-events:none; }
+  #sim-detector-controls { padding:8px 12px; }
+  #sim-frame-slider { flex:1; min-width:100px; accent-color:#7dd3fc; }
+  #sim-measurements { display:flex;flex-direction:column;gap:5px;margin-top:8px; }
+  .sim-measurement { display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:6px;align-items:start;padding:6px;border:1px solid #293145;border-radius:5px;background:#0f1117;font-size:.67rem;color:#94a3b8; }
+  .sim-measurement button { border:0;background:transparent;color:#64748b;cursor:pointer;padding:0 2px; }
+  .sim-measurement button:hover { color:#f87171; }
+  #sim-plot { min-height:0; border-top:1px solid #2d3148; }
+  .sim-grid { display:grid; grid-template-columns:100px minmax(0,1fr); gap:7px 8px; align-items:center; }
+  .sim-grid label { font-size:.7rem; color:#94a3b8; overflow-wrap:anywhere; }
+  .sim-control { width:100%; min-width:0; background:#0f1117; border:1px solid #334155; color:#e2e8f0; border-radius:4px; padding:4px 6px; font-size:.72rem; }
+  textarea.sim-control { resize:vertical; font-family:ui-monospace,Consolas,monospace; }
+  .sim-file-name { font-size:.65rem; color:#64748b; margin-top:2px; overflow-wrap:anywhere; }
+  @media (max-width: 760px) {
+    #tab-simulation { flex-direction:column; overflow:auto; }
+    #sim-sidebar { width:100%; max-width:none; max-height:none; }
+    #sim-main { min-height:700px; flex:none; }
+  }
 
   /* ─── About tab ─────────────────────────────────────────────── */
   #tab-about {
@@ -654,110 +684,122 @@
 </header>
 
 <div class="tab-bar">
-  <div class="tab" data-tab="calib">Calibration<button class="tab-close" title="Close tab">✕</button></div>
+  <div class="tab" data-tab="calib">Intensity Correction<button class="tab-close" title="Close tab">✕</button></div>
   <div class="tab" data-tab="acquire">Acquisition<button class="tab-close" title="Close tab">✕</button></div>
   <div class="tab active" data-tab="growth">Analysis<button class="tab-close" title="Close tab">✕</button></div>
+  <div class="tab" data-tab="simulation">Simulation<button class="tab-close" title="Close tab">✕</button></div>
   <div class="tab" data-tab="library">Library<button class="tab-close" title="Close tab">✕</button></div>
   <div class="tab" data-tab="about">About<button class="tab-close" title="Close tab">✕</button></div>
 </div>
 
-<!-- ═══════════════════ CALIBRATION ═══════════════════ -->
+<!-- ═══════════════════ INTENSITY CORRECTION ═══════════════════ -->
 <div id="tab-calib" class="tab-content">
 
-  <!-- LEFT: controls -->
-  <div class="sidebar" id="main-sidebar">
-  <div class="sidebar-resize-handle" id="sidebar-resizer"></div>
-
-    <div class="card">
-      <h3>How to Calibrate</h3>
-      <ol id="calib-steps" style="padding-left:16px;font-size:.76rem;color:#94a3b8;line-height:2;">
-        <li id="step-db"   class="calib-step active-step">Click <b style="color:#f87171;">Direct Beam</b></li>
-        <li id="step-shad" class="calib-step">Click <b style="color:#fb923c;">Shadow Edge</b></li>
-        <li id="step-spec" class="calib-step">Click <b style="color:#4ade80;">Specular Spot</b></li>
-        <li id="step-el"   class="calib-step">Click <b style="color:#38bdf8;">Left Camera Edge</b></li>
-        <li id="step-er"   class="calib-step">Click <b style="color:#38bdf8;">Right Camera Edge</b></li>
-      </ol>
-      <div style="display:flex;gap:6px;margin-top:10px;">
-        <button class="btn btn-sm" id="calib-undo"  style="flex:1;background:#1e293b;border:1px solid #334155;color:#94a3b8;">↩ Undo</button>
-        <button class="btn btn-sm" id="calib-clear" style="flex:1;background:#7f1d1d;color:#fca5a5;">✕ Clear</button>
+  <div id="corr-workspace">
+    <aside id="corr-sidebar">
+      <div class="card">
+        <h3>Direct-Beam Correction</h3>
+        <details class="help" open><summary>How it works</summary>
+          <div class="help-body">
+            Load a dataset in Analysis, then drag a rectangle around the direct beam.
+            Its integrated intensity is smoothed and normalized to a 0–1 sensitivity
+            curve. Corrected intensity is <b>measured intensity ÷ sensitivity</b>.
+            Native frames and raw analysis results are never modified.
+          </div>
+        </details>
+        <label style="display:flex;align-items:center;gap:7px;font-size:.72rem;color:#cbd5e1;margin-top:8px;">
+          <input type="radio" name="corr-source" value="active" checked> Use the Analysis video
+        </label>
+        <label style="display:flex;align-items:center;gap:7px;font-size:.72rem;color:#cbd5e1;margin-top:6px;">
+          <input type="radio" name="corr-source" value="reference"> Use a separate reference video
+        </label>
+        <button id="corr-load-frame" class="btn btn-sm" style="width:100%;margin-top:8px;">Load Current Analysis Frame</button>
+        <input id="corr-reference-file" type="file" accept=".h5,.mp4,.avi,.mov,.mkv,.npy,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.img" style="display:none;">
+        <button id="corr-load-reference" class="btn btn-sm" style="display:none;width:100%;margin-top:8px;">Choose Reference Video</button>
+        <div id="corr-reference-name" style="display:none;font-size:.68rem;color:#7dd3fc;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+        <div id="corr-roi-status" style="font-size:.7rem;color:#64748b;margin-top:7px;line-height:1.4;">Load a dataset, then draw the direct-beam ROI.</div>
+        <button id="corr-clear-roi" class="btn btn-sm" style="width:100%;margin-top:7px;background:#1e293b;color:#94a3b8;border:1px solid #334155;" disabled>Clear ROI</button>
       </div>
-    </div>
 
-    <div class="card">
-      <h3>Parameters</h3>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:.78rem;color:#94a3b8;">
-        <label>L (cm)</label>
-        <input id="calib-L" type="number" value="10.5" step="0.01" min="0.1"
-               style="background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;width:100%;">
-        <label>D_screen (cm)</label>
-        <input id="calib-D" type="number" value="4.98" step="0.01" min="0.1"
-               style="background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;width:100%;">
+      <div class="card">
+        <h3>Curve Processing</h3>
+        <div style="display:grid;grid-template-columns:1fr 82px;gap:7px;align-items:center;font-size:.72rem;color:#94a3b8;">
+          <label for="corr-smooth">Median smoothing</label>
+          <input id="corr-smooth" type="number" value="1" min="1" step="2" title="1 preserves exact self-normalization; larger odd values smooth noise"
+            style="background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;width:100%;box-sizing:border-box;">
+          <label for="corr-max-factor">Safety cap (×)</label>
+          <input id="corr-max-factor" type="number" value="1000" min="1" max="1000000" step="10"
+            style="background:#0f1117;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:4px 6px;width:100%;box-sizing:border-box;">
+        </div>
+        <div style="font-size:.66rem;color:#64748b;margin-top:7px;line-height:1.4;">
+          Use smoothing = 1 for exact direct-beam self-normalization. Larger windows
+          suppress noise but can create edge residuals when the beam clips abruptly.
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:#94a3b8;margin-top:9px;">
+          <input id="corr-use-background" type="checkbox"> Use Analysis broad-background subtraction
+        </label>
+        <button id="corr-measure" class="btn btn-primary" style="width:100%;margin-top:10px;" disabled>Measure &amp; Save Correction</button>
+        <div id="corr-save-status" style="font-size:.68rem;color:#64748b;margin-top:7px;line-height:1.4;">Saved curves will appear in <code>data/corrections</code> (or the configured data root).</div>
       </div>
-      <p style="font-size:.7rem;color:#475569;margin-top:8px;">
-        L = substrate-to-screen distance<br>
-        D_screen = physical phosphor screen diameter
-      </p>
-      <button class="btn btn-primary" id="calib-calc-btn" style="margin-top:12px;width:100%;font-size:.82rem;">
-        Calculate α
-      </button>
-      <p id="calib-calc-hint" style="font-size:.7rem;color:#fb923c;margin-top:6px;display:none;">
-        Mark all 5 points first.
-      </p>
-    </div>
 
-    <div class="card" id="calib-results-card" style="display:none;">
-      <h3 style="color:#4ade80;">✓ Results</h3>
-      <table id="calib-result-table" style="width:100%;font-size:.78rem;border-collapse:collapse;">
-      </table>
-      <div style="display:flex;gap:6px;margin-top:10px;">
-        <button class="btn btn-primary btn-sm" id="calib-save-img" style="flex:1;">Save Image</button>
-        <button class="btn btn-primary btn-sm" id="calib-export" style="flex:1;">Save JSON</button>
+      <div class="card">
+        <h3>Apply Correction</h3>
+        <label style="display:flex;align-items:center;gap:7px;font-size:.74rem;color:#cbd5e1;">
+          <input id="corr-apply-curves" type="checkbox" disabled> Divide intensity and rocking curves
+        </label>
+        <label style="display:flex;align-items:center;gap:7px;font-size:.74rem;color:#cbd5e1;margin-top:8px;">
+          <input id="corr-apply-video" type="checkbox" disabled> Correct video playback and frame exports
+        </label>
+        <button id="corr-export" class="btn btn-sm" style="width:100%;margin-top:10px;" disabled>Download Correction CSV</button>
+        <button id="corr-clear" class="btn btn-sm" style="width:100%;margin-top:7px;background:#7f1d1d;color:#fca5a5;" disabled>Remove Active Correction</button>
+        <div id="corr-apply-status" style="font-size:.68rem;color:#64748b;margin-top:7px;line-height:1.4;">No correction measured.</div>
       </div>
-    </div>
+    </aside>
 
-    <div class="card" style="background:#0f1117;border-color:#1e3a5f;">
-      <h3 style="color:#7dd3fc;">Geometry</h3>
-      <pre style="font-size:.67rem;color:#475569;line-height:1.5;overflow:auto;">
- ┌──────────────────┐
- │  Direct beam  ●  │← top
- │                  │
- │  Shadow edge ════│← α=0
- │          ↕ Δy    │
- │  Specular     ●  │
- └──────────────────┘
- α = arctan(Δy·s / L)
- s = D_cm / D_px</pre>
-    </div>
-
-  </div>
-
-  <!-- RIGHT: calibration canvas -->
-  <div id="calib-viewer" style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#090b11;position:relative;min-height:36px;">
-    <!-- Titlebar -->
-    <div id="calib-titlebar" style="padding:0 10px;height:36px;background:#1a1d27;border-bottom:1px solid #2d3148;display:flex;align-items:center;gap:8px;flex-shrink:0;user-select:none;">
-      <!-- Window controls -->
-      <button id="calib-min-btn" title="Minimize" style="width:22px;height:22px;border-radius:50%;border:none;background:#f59e0b;color:#000;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;">─</button>
-      <button id="calib-max-btn" title="Maximize" style="width:22px;height:22px;border-radius:50%;border:none;background:#22c55e;color:#000;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;">⬜</button>
-      <button id="calib-close-btn" title="Close" style="width:22px;height:22px;border-radius:50%;border:none;background:#ef4444;color:#fff;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
-      <span style="color:#334155;font-size:.8rem;">|</span>
-      <input type="file" id="calib-file-input" accept=".h5,.mp4,.avi,.mov,.mkv,.npy,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.img" style="display:none;">
-      <button class="btn btn-primary btn-sm" id="calib-open-btn">📂 Open File</button>
-      <button class="btn btn-sm" id="calib-load-btn" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;">Load Mean Frame</button>
-      <span style="font-size:.8rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;" id="calib-fname"></span>
-      <span id="calib-status" style="font-size:.76rem;color:#fb923c;margin-left:auto;"></span>
-    </div>
-    <!-- Canvas area (hidden when minimized) -->
-    <div id="calib-body" style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;">
-      <canvas id="calib-canvas" style="max-width:100%;max-height:100%;display:block;cursor:crosshair;"></canvas>
-      <canvas id="calib-overlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
-      <div id="calib-hint" style="position:absolute;font-size:.85rem;color:#334155;text-align:center;pointer-events:none;">
-        Open a file with <b>📂 Open File</b> or load a file in Frame Viewer, then click <b>Load Mean Frame</b>
+    <section id="corr-main">
+      <div class="viewer-center" id="corr-viewer-center">
+        <div class="viewer-titlebar" id="corr-viewer-titlebar">
+          <span id="corr-viewer-title" class="viewer-heading" title="Direct-beam calibration video">Intensity Correction Viewer</span>
+          <div class="zoom-bar">
+            <button id="corr-zoom-out" title="Zoom out">−</button>
+            <span id="corr-zoom-label">100%</span>
+            <button id="corr-zoom-in" title="Zoom in">+</button>
+            <button id="corr-zoom-reset" title="Reset zoom">⤢</button>
+          </div>
+        </div>
+        <div class="canvas-wrap" id="corr-canvas-wrap">
+          <canvas id="corr-frame-canvas"></canvas>
+          <canvas id="corr-roi-canvas"></canvas>
+          <div id="corr-canvas-hint" style="position:absolute;color:#475569;font-size:.85rem;text-align:center;pointer-events:none;">Load a dataset in Analysis, then open this tab.</div>
+        </div>
+        <div class="playback-bar growth-playback-bar" id="corr-player">
+          <div class="growth-playback-layout">
+            <div class="growth-playback-options">
+              <div class="playback-controls">
+                <button id="corr-first" class="ctrl-btn" disabled title="First frame">⏮</button>
+                <button id="corr-prev" class="ctrl-btn" disabled title="Previous frame">◀</button>
+                <button id="corr-play" class="ctrl-btn" disabled title="Play / pause">▶</button>
+                <button id="corr-next" class="ctrl-btn" disabled title="Next frame">▶|</button>
+                <button id="corr-last" class="ctrl-btn" disabled title="Last frame">⏭</button>
+                <input id="corr-frame-slider" type="range" min="0" max="0" value="0" disabled>
+                <span id="corr-frame-label">No video</span>
+              </div>
+              <div class="speed-row">
+                <label for="corr-fps-slider">Playback FPS:</label>
+                <input type="range" id="corr-fps-slider" min="1" max="60" step="1" value="7"
+                  aria-label="Intensity correction playback frames per second"
+                  style="width:min(260px,45vw);accent-color:#7dd3fc;cursor:pointer;">
+                <output id="corr-fps-value" for="corr-fps-slider" style="color:#94a3b8;min-width:44px;">7 FPS</output>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+      <div id="corr-chart"></div>
+    </section>
   </div>
 
 </div>
-
 <!-- ═══════════════════ FRAME VIEWER (no longer in the tab bar — its
      contrast/colormap UI is now unreachable, but the canvas/JS underneath
      is still load-bearing infra other features rely on, so it stays in
@@ -1800,6 +1842,131 @@
 </div>
 <!-- ══════════════════════════════════════════════════════ -->
 
+<!-- ═══════════════════ SIMULATION ═══════════════════════ -->
+<div id="tab-simulation" class="tab-content">
+  <aside class="sidebar" id="sim-sidebar">
+    <div class="card">
+      <h3>Simulation Adapter</h3>
+      <details class="help"><summary>Adapter-driven simulations</summary>
+        <div class="help-body">
+          Simulation adapters run independently of the experimental dataset. Installed
+          adapters declare their required files and options; results and input copies are
+          saved locally under <b>data/simulations</b>.
+        </div>
+      </details>
+      <div class="sim-grid">
+        <label for="sim-adapter">Adapter</label>
+        <select id="sim-adapter" class="sim-control"><option>Loading…</option></select>
+        <label for="sim-id">Run name</label>
+        <input id="sim-id" class="sim-control" value="local-simulation" spellcheck="false">
+        <label for="sim-device">Device</label>
+        <select id="sim-device" class="sim-control">
+          <option value="auto">Auto</option><option value="cpu">CPU</option>
+          <option value="cuda">CUDA</option><option value="mps">MPS</option>
+        </select>
+      </div>
+      <div id="sim-adapter-description" style="font-size:.68rem;color:#64748b;line-height:1.4;margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Inputs</h3>
+      <div id="sim-inputs" class="sim-grid"></div>
+    </div>
+
+    <div class="card">
+      <h3>Options</h3>
+      <div id="sim-options" class="sim-grid"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;gap:6px;">
+        <button id="sim-run" class="btn btn-primary" style="flex:1;">Run Simulation</button>
+        <button id="sim-cancel" class="btn" disabled style="background:#3f1d2e;color:#fda4af;border:1px solid #7f1d1d;">Cancel</button>
+      </div>
+      <div style="height:5px;background:#1e293b;border-radius:3px;margin-top:9px;overflow:hidden;">
+        <div id="sim-progress" style="height:100%;width:0;background:#38bdf8;transition:width .2s;"></div>
+      </div>
+      <div id="sim-status" style="font-size:.68rem;color:#64748b;line-height:1.4;margin-top:7px;overflow-wrap:anywhere;">Choose an available adapter and its input files.</div>
+    </div>
+
+    <div class="card">
+      <h3>Saved Simulations</h3>
+      <select id="sim-saved-runs" class="sim-control"><option value="">No saved simulations</option></select>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button id="sim-recall" class="btn btn-sm" style="flex:1;" disabled>Recall</button>
+        <button id="sim-refresh" class="btn btn-sm" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;">Refresh</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button id="sim-download-csv" class="btn btn-sm" style="flex:1;" disabled>CSV</button>
+        <button id="sim-download-npz" class="btn btn-sm" style="flex:1;" disabled>NPZ</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Screen Measurements</h3>
+      <p style="font-size:.67rem;color:#64748b;line-height:1.4;margin-bottom:7px;">
+        Draw a line on a detector frame. Results use the saved screen geometry and
+        beam energy to report detector distance in mm and |Δq| in Å⁻¹.
+      </p>
+      <div style="display:flex;gap:5px;">
+        <button id="sim-mode-measure" class="mode-btn active" style="flex:1;">📏 Measure</button>
+        <button id="sim-mode-pan" class="mode-btn" style="flex:1;">✋ Pan</button>
+        <button id="sim-clear-measurements" class="btn btn-sm" disabled>Clear</button>
+      </div>
+      <div id="sim-measure-status" style="font-size:.66rem;color:#64748b;margin-top:7px;line-height:1.35;">Run or recall a detector simulation to measure it.</div>
+      <div id="sim-measurements"></div>
+    </div>
+  </aside>
+
+  <section id="sim-main">
+    <div id="sim-detector-panel" class="viewer-center">
+      <div id="sim-detector-titlebar" class="viewer-titlebar">
+        <span id="sim-result-title" class="viewer-heading" style="font-size:.82rem;color:#cbd5e1;">Simulated Detector</span>
+        <span id="sim-result-path" style="font-size:.64rem;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+        <div class="zoom-bar">
+          <button id="sim-zoom-out" title="Zoom out">−</button>
+          <span id="sim-zoom-label">100%</span>
+          <button id="sim-zoom-in" title="Zoom in">+</button>
+          <button id="sim-zoom-reset" title="Reset zoom">⤢</button>
+          <span style="width:1px;min-width:1px;height:18px;background:#334155;margin:0 2px;"></span>
+          <button id="sim-save-image" title="Save current screen image" disabled>🖼</button>
+          <button id="sim-save-gif" title="Regenerate and download detector GIF" disabled>🎞</button>
+        </div>
+        <button class="vwin-btn" id="sim-vwin-min" title="Minimize">─</button>
+      </div>
+      <div id="sim-detector-stage" class="canvas-wrap">
+        <canvas id="sim-detector-canvas" aria-label="Simulated RHEED detector frame"></canvas>
+        <canvas id="sim-measure-canvas"></canvas>
+        <div id="sim-detector-hint" style="color:#475569;font-size:.85rem;text-align:center;">Run or recall a simulation to inspect its detector output.</div>
+      </div>
+      <div id="sim-detector-controls" class="playback-bar">
+        <div class="playback-controls">
+          <button class="ctrl-btn" id="sim-btn-first" title="First frame">⏮</button>
+          <button class="ctrl-btn" id="sim-btn-prev" title="Previous frame">◀</button>
+          <button class="ctrl-btn" id="sim-btn-play" title="Play/Pause" disabled>▶</button>
+          <button class="ctrl-btn" id="sim-btn-next" title="Next frame">▶|</button>
+          <button class="ctrl-btn" id="sim-btn-last" title="Last frame">⏭</button>
+          <input id="sim-frame-slider" type="range" min="0" max="0" value="0" disabled>
+          <span id="sim-frame-label" style="min-width:245px;text-align:right;font-size:.72rem;color:#94a3b8;">No detector stack</span>
+        </div>
+        <div class="speed-row" style="flex-wrap:wrap;">
+          <label for="sim-fps-slider">Playback FPS:</label>
+          <input id="sim-fps-slider" type="range" min="1" max="60" step="1" value="7"
+            style="width:min(230px,40vw);accent-color:#7dd3fc;cursor:pointer;">
+          <output id="sim-fps-value" for="sim-fps-slider" style="color:#94a3b8;min-width:44px;">7 FPS</output>
+          <span style="margin-left:auto;">Display:</span>
+          <select id="sim-display-scale" class="sim-control" style="width:82px;"><option value="linear">Linear</option><option value="sqrt" selected>Sqrt</option><option value="log">Log</option></select>
+          <select id="sim-colormap" class="sim-control" style="width:92px;"><option value="gray">Gray</option><option value="viridis">Viridis</option><option value="plasma">Plasma</option><option value="inferno" selected>Inferno</option><option value="magma">Magma</option><option value="cividis">Cividis</option></select>
+        </div>
+      </div>
+      <div id="sim-viewer-resize-handle" title="Drag to resize viewer"></div>
+    </div>
+    <div id="sim-plot"></div>
+  </section>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+
 <!-- RHEED LIBRARY TAB -->
 <div id="tab-library" class="tab-content">
   <div style="display:flex;height:100%;gap:0;">
@@ -1866,9 +2033,10 @@
   <section>
     <h2>Tabs</h2>
     <ul>
-      <li><b>Calibration</b>: mark direct beam, shadow edge, specular spot and camera edges on a still/mean frame; compute pixel scale (cm/px) and angle of incidence α; save annotated image + JSON</li>
+      <li><b>Intensity Correction</b>: measure a direct-beam ROI in the Analysis video or a separate reference video; smooth and save a normalized 0–1 correction under the data folder, then divide intensity/rocking curves or rendered frames by it</li>
       <li><b>Acquisition</b>: placeholder for live-acquisition features (planned)</li>
       <li><b>Analysis</b>: the main workspace: load a growth/rocking video, calibrate, and run all the per-frame analyses below on a shared dataset</li>
+      <li><b>Simulation</b>: run installed local simulation adapters from their declared inputs and options; play, zoom, resize, and measure detector stacks in millimetres and reciprocal-space units; recall file-backed runs; and export PNG/GIF views or CSV/NPZ data</li>
       <li><b>Library</b>: a persistent reference gallery of RHEED patterns for different substrates; add images tagged with material, surface, zone axis, energy, and notes (.img/.tif/.png decoded to PNG), filter, and enlarge</li>
       <li><b>About</b>: this page</li>
     </ul>
@@ -1880,7 +2048,7 @@
       <li><b>Frame viewer</b>: scrub, play (spacebar / ◀ ▶), zoom, rotate; per-frame or whole-video auto-contrast; save a frame (PNG) or all frames (ZIP)</li>
       <li><b>Colormaps</b>: gradient-swatch picker including the perceptually-uniform Viridis / Plasma / Inferno / Magma and the colorblind-safe <b>Cividis</b>, plus Thermal, Rainbow, Marine, Cyan–Magenta, and Grayscale</li>
       <li><b>Substrate &amp; Streak Calibration</b>: one shared energy/material/zone reference drives substrate calibration, automatic strip calibration, and two-click in-plane lattice measurements. Reference d can come from the <b>built-in table</b>, <b>Materials Project</b>, or a <b>custom</b> value</li>
-      <li><b>Frame Calibration</b>: per-frame 5-point calibration giving α, scale, and shadow edge for peak tracking</li>
+      <li><b>Frame Calibration</b>: the Analysis tab's per-frame 5-point calibration gives α, scale, and shadow edge for peak tracking</li>
       <li><b>ROI Tool &amp; Intensity vs Time</b>: draw circle/rect/line ROIs and add the strip fit's background-subtracted specular and averaged first-order peak intensities to the same window; each series has its own stacked subplot with independent show/EMA-smoothing/α and individual or combined CSV export; linear or log Y</li>
       <li><b>FFT / Growth Rate</b>: per-series Fourier analysis of complete intensity traces (one resizable window per ROI or tracked peak): detrends (EMA / linear / mean), reports the dominant frequency f₀ (= ML/s), period (s/ML), and deposition rate (Å/s) using a growth-direction layer thickness derived from the substrate (or set manually)</li>
       <li><b>Peak Tracking &amp; α(t)</b>: track specular and/or direct-beam position frame-by-frame; compute α(t) by two methods; sine-fit; rocking curve (specular intensity vs α)</li>
@@ -1977,7 +2145,52 @@ const state = {
   analysisDir: null,
   analysisResumed: false,
   savedArtifactCount: 0,
+  intensityCorrection: null,
 };
+
+function intensityCorrectionFactorAt(timestamp, fallbackIndex = 0) {
+  const correction = state.intensityCorrection;
+  if (!correction) return 1;
+  const factors = correction.correction_factors || [];
+  const times = correction.application_timestamps || correction.timestamps || [];
+  if (!factors.length) return 1;
+  if (!Number.isFinite(Number(timestamp)) || times.length !== factors.length) {
+    return Number(factors[Math.max(0, Math.min(fallbackIndex, factors.length - 1))]) || 1;
+  }
+  const t = Number(timestamp);
+  if (t <= times[0]) return Number(factors[0]) || 1;
+  if (t >= times[times.length - 1]) return Number(factors[factors.length - 1]) || 1;
+  let lo = 0, hi = times.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (Number(times[mid]) <= t) lo = mid; else hi = mid;
+  }
+  const span = Number(times[hi]) - Number(times[lo]);
+  const fraction = span > 0 ? (t - Number(times[lo])) / span : 0;
+  return Number(factors[lo]) + fraction * (Number(factors[hi]) - Number(factors[lo]));
+}
+
+function correctedIntensityValues(values, timestamps) {
+  const correction = state.intensityCorrection;
+  const raw = Array.from(values || [], value => value == null ? null : Number(value));
+  if (!correction || !correction.applyCurves) return raw;
+  return raw.map((value, index) => (
+    value == null || !Number.isFinite(value)
+      ? null
+      : value * intensityCorrectionFactorAt(timestamps && timestamps[index], index)
+  ));
+}
+
+function displayedIntensityValues(series) {
+  return correctedIntensityValues(series.intensities, series.timestamps);
+}
+
+function videoCorrectionScale(index) {
+  const correction = state.intensityCorrection;
+  if (!correction || !correction.applyVideo) return 1;
+  const times = correction.application_timestamps || [];
+  return intensityCorrectionFactorAt(times[index], index);
+}
 
 const ROI_COLORS = [
   '#38bdf8','#4ade80','#fb923c','#f472b6','#a78bfa',
@@ -2112,6 +2325,7 @@ async function uploadFile(file) {
     state.currentFrame = 0;
     state.rois    = [];
     state.chartData = null;
+    if (window._resetIntensityCorrection) window._resetIntensityCorrection(true);
     state.analysisDir = data.analysis_dir || null;
     state.analysisResumed = Boolean(data.analysis_resumed);
     state.savedArtifactCount = Number(data.saved_artifact_count) || 0;
@@ -2250,7 +2464,12 @@ function currentBackgroundConfig() {
   };
 }
 
-async function applyBackgroundSubtraction(enabled, frameIndex, config = null) {
+async function applyBackgroundSubtraction(
+  enabled,
+  frameIndex,
+  config = null,
+  { rescaleContrast = true } = {},
+) {
   const response = await fetch('/background_subtraction', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2258,6 +2477,7 @@ async function applyBackgroundSubtraction(enabled, frameIndex, config = null) {
       enabled,
       frame_index: frameIndex,
       config: config || currentBackgroundConfig(),
+      rescale_contrast: rescaleContrast,
     }),
   });
   const data = await response.json();
@@ -2344,11 +2564,13 @@ async function getFrameEntry(idx, { auto = false, preview = false } = {}) {
 
   const format = preview ? 'jpeg' : 'png';
   const generation = frameCacheGeneration;
-  const requestKey = `${generation}:${idx}:${auto ? 1 : 0}:${format}`;
+  const intensityScale = videoCorrectionScale(idx);
+  const requestKey = `${generation}:${idx}:${auto ? 1 : 0}:${format}:${intensityScale.toFixed(8)}`;
   if (frameRequests.has(requestKey)) return frameRequests.get(requestKey);
   const pending = (async () => {
     const query = new URLSearchParams({ format });
     if (auto) query.set('auto', '1');
+    if (intensityScale !== 1) query.set('intensity_scale', intensityScale.toString());
     const response = await fetch(`/frame_image/${idx}?${query}`);
     if (!response.ok) {
       const contentType = response.headers.get('content-type') || '';
@@ -2495,11 +2717,12 @@ async function rotateFrame(direction) {
     if (window._ssClearAll) window._ssClearAll();
     if (window._onCalibUpdate) window._onCalibUpdate();
     if (typeof grAiReset === 'function') grAiReset(true);
+    if (window._resetIntensityCorrection) window._resetIntensityCorrection(true);
 
     clearFrameCache();
     zoomLevel = 1;
     await loadFrame(state.currentFrame);
-    showToast('Frame rotated — ROIs & calibration were reset.');
+    showToast('Frame rotated — ROIs, calibration, and intensity correction were reset.');
   } catch (e) {
     showToast('Error: ' + e.message, true);
   } finally {
@@ -2790,35 +3013,41 @@ computeBtn.addEventListener('click', async () => {
   const dw = grCanvas ? grCanvas.width : frameCanvas.width;
   const dh = grCanvas ? grCanvas.height : frameCanvas.height;
 
-  const series = [];
-  for (const roi of state.rois) {
-    try {
-      let payload = {
-        type: roi.type,
+  const useBackground = Boolean(
+    document.getElementById('gr-roi-use-background')?.checked
+  );
+  let series = [];
+  try {
+    const response = await fetch('/intensity/batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        rois: state.rois,
         display_w: dw,
         display_h: dh,
-        use_background_subtraction: Boolean(
-          document.getElementById('gr-roi-use-background')?.checked
-        ),
-      };
-      if (roi.type === 'circle') {
-        payload = { ...payload, cx: roi.cx, cy: roi.cy, r: roi.r };
-      } else if (roi.type === 'rect') {
-        payload = { ...payload, x1: roi.x1, y1: roi.y1, x2: roi.x2, y2: roi.y2 };
-      } else if (roi.type === 'line') {
-        payload = { ...payload, x1: roi.x1, y1: roi.y1, x2: roi.x2, y2: roi.y2, width: roi.width };
-      }
-      const res  = await fetch('/intensity', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      series.push({ source: 'roi', label: roi.label, color: roi.color,
-                    intensities: data.intensities, timestamps: data.timestamps });
-    } catch (err) {
-      showToast('Error for ' + roi.label + ': ' + err.message, true);
+        use_background_subtraction: useBackground,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.error || `Server error ${response.status}`);
     }
+    if (!Array.isArray(data.series) || data.series.length !== state.rois.length) {
+      throw new Error('Server returned an incomplete ROI intensity result');
+    }
+    series = state.rois.map((roi, index) => ({
+      source: 'roi',
+      label: roi.label,
+      color: roi.color,
+      roi: {...roi},
+      use_background_subtraction: useBackground,
+      intensities: data.series[index].intensities,
+      timestamps: data.timestamps,
+    }));
+  } catch (error) {
+    hideLoading();
+    showToast('Could not compute ROI intensities: ' + error.message, true);
+    return;
   }
 
   if (!series.length) { hideLoading(); return; }
@@ -2882,21 +3111,35 @@ function intensityPersistenceSnapshot() {
   const series = state.chartData.map((item, index) => {
     const display = icRoiState[index] || { show: true, ema: true, alpha: 0.15 };
     const alpha = Number(display.alpha) || 0.15;
+    const displayed = displayedIntensityValues(item);
+    const correctionApplied = Boolean(
+      state.intensityCorrection && state.intensityCorrection.applyCurves
+    );
     return {
       source: item.source || 'roi',
       label: item.label || `Series ${index + 1}`,
       color: item.color || ROI_COLORS[index % ROI_COLORS.length],
+      roi: item.roi || null,
+      use_background_subtraction: Boolean(item.use_background_subtraction),
       timestamps: item.timestamps,
       intensities: item.intensities,
+      current_corrected_intensities: correctionApplied ? displayed : undefined,
       show: display.show !== false,
       ema_enabled: display.ema !== false,
       ema_alpha: alpha,
-      ema_intensities: emaSeries(item.intensities, alpha),
+      ema_intensities: emaSeries(displayed, alpha),
     };
   });
   return {
     parameters: {
       plot_options: { log_y: icLogY.checked },
+      intensity_correction: state.intensityCorrection && state.intensityCorrection.applyCurves
+        ? {
+            source_label: state.intensityCorrection.source_label,
+            normalization: state.intensityCorrection.normalization,
+            correction_files: state.intensityCorrection.correction_files,
+          }
+        : null,
     },
     result: {
       plot_options: { log_y: icLogY.checked },
@@ -3042,20 +3285,30 @@ function drawIntensityChart(idx, preserveAxes = false) {
     const yaxisKey = r === 0 ? 'yaxis' : 'yaxis' + (r + 1);
     const hi = 1 - r * (h + gap);
     const lo = Math.max(0, hi - h);
+    const correctionApplied = Boolean(
+      state.intensityCorrection && state.intensityCorrection.applyCurves
+    );
+    const displayedLabel = correctionApplied ? `${s.label} (current-corrected)` : s.label;
     layout[yaxisKey] = {
-      domain: [lo, hi], title: { text: s.label, font: { color: s.color, size: 11 } },
+      domain: [lo, hi], title: { text: displayedLabel, font: { color: s.color, size: 11 } },
       gridcolor: '#1e293b', zerolinecolor: '#334155',
       type: icLogY.checked ? 'log' : 'linear',
     };
-    const t = s.timestamps.slice(0, n), v = s.intensities.slice(0, n);
+    const t = s.timestamps.slice(0, n), v = displayedIntensityValues(s).slice(0, n);
+    if (correctionApplied) {
+      traces.push({
+        x: t, y: s.intensities.slice(0, n), mode: 'lines', yaxis: yref,
+        name: s.label + ' raw', line: { color: '#64748b', width: 1, dash: 'dot' }, opacity: 0.45,
+      });
+    }
     traces.push({
-      x: t, y: v, mode: 'lines', yaxis: yref, name: s.label,
+      x: t, y: v, mode: 'lines', yaxis: yref, name: displayedLabel,
       line: { color: s.color, width: st.ema ? 1 : 1.6 }, opacity: st.ema ? 0.4 : 1,
     });
     if (st.ema) {
       traces.push({
         x: t, y: emaSeries(v, st.alpha), mode: 'lines', yaxis: yref,
-        name: s.label + ` EMA α=${st.alpha.toFixed(2)}`, line: { color: s.color, width: 2.5 },
+        name: displayedLabel + ` EMA α=${st.alpha.toFixed(2)}`, line: { color: s.color, width: 2.5 },
       });
     }
   });
@@ -3136,11 +3389,14 @@ function exportRoiCsv(i) {
   const s = series[i];
   const st = icRoiState[i] || { alpha: 0.15 };
   const ts = s.timestamps;
-  const ema = emaSeries(s.intensities, st.alpha);
+  const values = displayedIntensityValues(s);
+  const ema = emaSeries(values, st.alpha);
   const safe = s.label.replace(/[^a-z0-9]+/gi, '_');
-  let csv = `time_s,${safe}_raw,${safe}_ema_alpha_${st.alpha.toFixed(2)}\n`;
+  const corrected = Boolean(state.intensityCorrection && state.intensityCorrection.applyCurves);
+  let csv = `time_s,${safe}_raw${corrected ? `,${safe}_corrected` : ''},${safe}_ema_alpha_${st.alpha.toFixed(2)}\n`;
   for (let k = 0; k < ts.length; k++) {
-    csv += `${intensityCsvNumber(ts[k], 4)},${intensityCsvNumber(s.intensities[k], 2)},${intensityCsvNumber(ema[k], 2)}\n`;
+    csv += `${intensityCsvNumber(ts[k], 4)},${intensityCsvNumber(s.intensities[k], 2)},` +
+      `${corrected ? intensityCsvNumber(values[k], 2) + ',' : ''}${intensityCsvNumber(ema[k], 2)}\n`;
   }
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
@@ -3155,10 +3411,14 @@ exportCsvBtn.addEventListener('click', () => {
   const series = state.chartData;
   if (!series) return;
   const ts = series[0].timestamps;
-  let csv = 'time_s,' + series.map(s => s.label.replace(/,/g,'')).join(',') + '\n';
+  const corrected = Boolean(state.intensityCorrection && state.intensityCorrection.applyCurves);
+  let headers = series.map(s => s.label.replace(/,/g,'') + '_raw');
+  if (corrected) headers = headers.concat(series.map(s => s.label.replace(/,/g,'') + '_corrected'));
+  let csv = 'time_s,' + headers.join(',') + '\n';
   for (let i = 0; i < ts.length; i++) {
     csv += intensityCsvNumber(ts[i], 4) + ',' +
-      series.map(s => intensityCsvNumber(s.intensities[i], 2)).join(',') + '\n';
+      series.map(s => intensityCsvNumber(s.intensities[i], 2)).join(',') +
+      (corrected ? ',' + series.map(s => intensityCsvNumber(displayedIntensityValues(s)[i], 2)).join(',') : '') + '\n';
   }
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
@@ -3223,7 +3483,7 @@ async function fftCompute(w) {
   try {
     const res = await fetch('/fft', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ intensities: s.intensities, timestamps: s.timestamps,
+      body: JSON.stringify({ intensities: displayedIntensityValues(s), timestamps: s.timestamps,
                              detrend: w.detrend.value, alpha,
                              analysis_name: `${s.source || 'series'}-${s.label || i + 1}`,
                              series_label: s.label || `Series ${i + 1}`,
@@ -3763,433 +4023,556 @@ new ResizeObserver(() => {
 })();
 
 // ═══════════════════════════════════════════════════════════════
-//  CALIBRATION TAB
+//  INTENSITY CORRECTION TAB
 // ═══════════════════════════════════════════════════════════════
 (function () {
-  const calibCanvas   = document.getElementById('calib-canvas');
-  const calibOverlay  = document.getElementById('calib-overlay');
-  const calibWrap     = document.getElementById('calib-body');
-  const calibHint     = document.getElementById('calib-hint');
-  const calibStatus   = document.getElementById('calib-status');
-  const calibLoadBtn  = document.getElementById('calib-load-btn');
-  const calibUndo     = document.getElementById('calib-undo');
-  const calibClear    = document.getElementById('calib-clear');
-  const calibViewer   = document.getElementById('calib-viewer');
-  const calibBody     = document.getElementById('calib-body');
+  const canvas = document.getElementById('corr-frame-canvas');
+  const overlay = document.getElementById('corr-roi-canvas');
+  const wrap = document.getElementById('corr-canvas-wrap');
+  const ctx = canvas.getContext('2d');
+  const octx = overlay.getContext('2d');
+  const hint = document.getElementById('corr-canvas-hint');
+  const roiStatus = document.getElementById('corr-roi-status');
+  const saveStatus = document.getElementById('corr-save-status');
+  const applyStatus = document.getElementById('corr-apply-status');
+  const measureBtn = document.getElementById('corr-measure');
+  const clearRoiBtn = document.getElementById('corr-clear-roi');
+  const applyCurves = document.getElementById('corr-apply-curves');
+  const applyVideo = document.getElementById('corr-apply-video');
+  const exportBtn = document.getElementById('corr-export');
+  const clearBtn = document.getElementById('corr-clear');
+  const background = document.getElementById('corr-use-background');
+  const referenceInput = document.getElementById('corr-reference-file');
+  const referenceButton = document.getElementById('corr-load-reference');
+  const referenceName = document.getElementById('corr-reference-name');
+  const playerButtons = {
+    first: document.getElementById('corr-first'),
+    prev: document.getElementById('corr-prev'),
+    play: document.getElementById('corr-play'),
+    next: document.getElementById('corr-next'),
+    last: document.getElementById('corr-last'),
+  };
+  const corrSlider = document.getElementById('corr-frame-slider');
+  const corrFrameLabel = document.getElementById('corr-frame-label');
+  const corrFpsSlider = document.getElementById('corr-fps-slider');
+  const corrFpsValue = document.getElementById('corr-fps-value');
+  let roi = null;
+  let dragStart = null;
+  let dragCurrent = null;
+  let roiMoveState = null;
+  let roiResizeState = null;
+  let referenceLoaded = false;
+  let referenceMeta = null;
+  let videoFrames = 0;
+  let videoFps = Number(corrFpsSlider.value) || 7;
+  let videoIndex = 0;
+  let videoPlaying = false;
+  let videoTimer = null;
+  let frameRequestGeneration = 0;
+  let correctionZoom = 1;
+  const CORR_ZOOM_MIN = 0.25;
+  const CORR_ZOOM_MAX = 8;
 
-  // ── Minimize / Maximize / Close ────────────────────────────
-  let calibMinimized = false;
-  let calibSavedHeight = null;
-
-  document.getElementById('calib-min-btn').addEventListener('click', () => {
-    if (calibMinimized) {
-      // Restore
-      calibBody.style.display = 'flex';
-      calibViewer.style.height = calibSavedHeight || '';
-      calibViewer.style.flex = '1';
-      calibMinimized = false;
-    } else {
-      // Collapse to titlebar
-      calibSavedHeight = calibViewer.offsetHeight + 'px';
-      calibBody.style.display = 'none';
-      calibViewer.style.flex = 'none';
-      calibViewer.style.height = '36px';
-      calibMinimized = true;
-    }
-  });
-
-  document.getElementById('calib-max-btn').addEventListener('click', () => {
-    // Restore first if minimized
-    if (calibMinimized) {
-      calibBody.style.display = 'flex';
-      calibMinimized = false;
-    }
-    calibViewer.style.flex = '1';
-    calibViewer.style.height = '';
-    // Hide the left sidebar for full width
-    const sidebar = calibViewer.closest('#tab-calib').querySelector(':scope > div:first-child');
-    if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? '' : 'none';
-  });
-
-  document.getElementById('calib-close-btn').addEventListener('click', () => {
-    calibViewer.style.display = 'none';
-    // Show a restore FAB
-    let fab = document.getElementById('calib-fab');
-    if (!fab) {
-      fab = document.createElement('button');
-      fab.id = 'calib-fab';
-      fab.textContent = '🔬 Calibration';
-      fab.style.cssText = 'position:fixed;bottom:16px;left:16px;z-index:200;padding:8px 14px;background:#7dd3fc;color:#0f172a;border:none;border-radius:20px;cursor:pointer;font-size:.8rem;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.5);';
-      document.body.appendChild(fab);
-    }
-    fab.style.display = '';
-    fab.onclick = () => { calibViewer.style.display = 'flex'; fab.style.display = 'none'; };
-  });
-  const calibCalcBtn  = document.getElementById('calib-calc-btn');
-  const calibCalcHint = document.getElementById('calib-calc-hint');
-  calibCalcBtn.addEventListener('click', () => {
-    const needed = ['direct_beam','shadow_edge','specular','cam_edge_left','cam_edge_right'];
-    const missing = needed.filter(k => !calibPts[k]);
-    if (missing.length) {
-      calibCalcHint.style.display = '';
-      calibCalcHint.textContent = `Mark all 5 points first (missing: ${missing.map(k=>k.replace(/_/g,' ')).join(', ')}).`;
-      return;
-    }
-    calibCalcHint.style.display = 'none';
-    runCalibration();
-  });
-
-  const calibExport  = document.getElementById('calib-export');
-  const resultsCard  = document.getElementById('calib-results-card');
-  const resultTable  = document.getElementById('calib-result-table');
-  const inputL       = document.getElementById('calib-L');
-  const inputD       = document.getElementById('calib-D');
-  const cCtx         = calibCanvas.getContext('2d');
-  const oCtx         = calibOverlay.getContext('2d');
-
-  const POINT_DEFS = [
-    { key: 'direct_beam',    label: '1 · Direct Beam',    color: '#f87171', stepId: 'step-db'   },
-    { key: 'shadow_edge',    label: '2 · Shadow Edge',    color: '#fb923c', stepId: 'step-shad' },
-    { key: 'specular',       label: '3 · Specular Spot',  color: '#4ade80', stepId: 'step-spec' },
-    { key: 'cam_edge_left',  label: '4 · Left Cam Edge',  color: '#38bdf8', stepId: 'step-el'   },
-    { key: 'cam_edge_right', label: '5 · Right Cam Edge', color: '#38bdf8', stepId: 'step-er'   },
-  ];
-
-  let calibPts  = {};    // key → {x, y} in native canvas coords
-  let calibStep = 0;     // 0–4 (which point we're waiting for)
-  let calibResult = null;
-  let calibLoaded = false;
-
-  // ── Open file directly from Calibration tab ─────────────────
-  const calibFileInput = document.getElementById('calib-file-input');
-  const calibOpenBtn   = document.getElementById('calib-open-btn');
-  const calibFname     = document.getElementById('calib-fname');
-
-  calibOpenBtn.addEventListener('click', () => calibFileInput.click());
-
-  const IMAGE_EXTS = new Set(['.png','.jpg','.jpeg','.tif','.tiff','.bmp','.img']);
-
-  calibFileInput.addEventListener('change', async () => {
-    const file = calibFileInput.files[0];
-    if (!file) return;
-    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-    calibFname.textContent = file.name;
-
-    if (IMAGE_EXTS.has(ext)) {
-      // Send to backend — browser can't decode TIF natively
-      showLoading('Loading image…');
-      try {
-        const fd = new FormData();
-        fd.append('file', file);
-        const res  = await fetch('/load_image', { method: 'POST', body: fd });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        const img = new Image();
-        await new Promise((res, rej) => { img.onload = res; img.onerror = rej;
-          img.src = 'data:image/png;base64,' + data.image; });
-        calibCanvas.width  = img.naturalWidth;
-        calibCanvas.height = img.naturalHeight;
-        cCtx.drawImage(img, 0, 0);
-        calibOverlay.width  = calibCanvas.width;
-        calibOverlay.height = calibCanvas.height;
-        syncCalibOverlay();
-        calibHint.style.display = 'none';
-        calibLoaded = true;
-        resetCalib();
-        setStatus('Click the Direct Beam (step 1 of 5)', '#fb923c');
-      } catch (e) { showToast('Error loading image: ' + e.message, true); }
-      finally { hideLoading(); calibFileInput.value = ''; }
-      return;
-    }
-
-    // For .h5 / .mp4 / .npy — upload to backend then load mean frame
-    showLoading('Loading ' + file.name + '…');
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res  = await fetch('/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      clearPlotAutosaves();
-      state.nFrames   = data.n_frames;
-      state.fps       = data.fps;
-      state.duration  = data.duration;
-      state.climAuto  = data.clim_auto || data.clim;
-      state.clim      = [...state.climAuto];
-      state.analysisDir = data.analysis_dir || null;
-      setLoadedDatasetName(data.dataset_name || file.name);
-      await loadCalibFrame();
-    } catch (e) { showToast('Error: ' + e.message, true); }
-    finally { hideLoading(); calibFileInput.value = ''; }
-  });
-
-  // ── Load mean frame ─────────────────────────────────────────
-  calibLoadBtn.addEventListener('click', loadCalibFrame);
-
-  async function loadCalibFrame() {
-    showLoading('Computing mean frame…');
-    try {
-      const res  = await fetch('/mean_frame');
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      const img = new Image();
-      await new Promise((res, rej) => { img.onload = res; img.onerror = rej;
-        img.src = 'data:image/png;base64,' + data.image; });
-      calibCanvas.width  = img.naturalWidth;
-      calibCanvas.height = img.naturalHeight;
-      cCtx.drawImage(img, 0, 0);
-      calibOverlay.width  = calibCanvas.width;
-      calibOverlay.height = calibCanvas.height;
-      syncCalibOverlay();
-      calibHint.style.display = 'none';
-      calibLoaded = true;
-      resetCalib();
-      setStatus('Click the Direct Beam (step 1 of 5)', '#fb923c');
-    } catch (e) { showToast('Error: ' + e.message, true); }
-    finally { hideLoading(); }
+  function source() {
+    return document.querySelector('input[name="corr-source"]:checked')?.value || 'active';
   }
 
-  function syncCalibOverlay() {
-    const r = calibCanvas.getBoundingClientRect();
-    const w = calibWrap.getBoundingClientRect();
-    calibOverlay.style.width  = r.width  + 'px';
-    calibOverlay.style.height = r.height + 'px';
-    calibOverlay.style.left   = (r.left - w.left) + 'px';
-    calibOverlay.style.top    = (r.top  - w.top)  + 'px';
+  function syncOverlay() {
+    if (!canvas.width || !canvas.height) return;
+    const frameRect = canvas.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    overlay.width = canvas.width;
+    overlay.height = canvas.height;
+    overlay.style.width = frameRect.width + 'px';
+    overlay.style.height = frameRect.height + 'px';
+    overlay.style.left = (frameRect.left - wrapRect.left) + 'px';
+    overlay.style.top = (frameRect.top - wrapRect.top) + 'px';
+    drawCorrectionRoi();
   }
-  window.addEventListener('resize', syncCalibOverlay);
 
-  function toNative(e) {
-    const r  = calibCanvas.getBoundingClientRect();
+  function correctionRoiShape(value) {
+    return value ? {
+      type: 'rect', color: '#f87171', label: 'Direct beam',
+      x1: value.x1, y1: value.y1, x2: value.x2, y2: value.y2,
+    } : null;
+  }
+
+  function drawCorrectionRoi() {
+    octx.clearRect(0, 0, overlay.width, overlay.height);
+    const current = dragStart && dragCurrent
+      ? {x1: dragStart.x, y1: dragStart.y, x2: dragCurrent.x, y2: dragCurrent.y}
+      : roi;
+    if (!current) return;
+    const shape = correctionRoiShape(current);
+    drawRoi(octx, shape, Boolean(dragStart));
+    if (!dragStart) drawResizeHandles(octx, shape);
+  }
+
+  function eventPoint(event) {
+    const rect = canvas.getBoundingClientRect();
     return {
-      x: (e.clientX - r.left) * calibCanvas.width  / r.width,
-      y: (e.clientY - r.top)  * calibCanvas.height / r.height,
+      x: Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width)),
+      y: Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height)),
     };
   }
 
-  // ── Click to mark ───────────────────────────────────────────
-  calibCanvas.addEventListener('click', e => {
-    if (!calibLoaded || calibStep >= POINT_DEFS.length) return;
-    const pt  = toNative(e);
-    const def = POINT_DEFS[calibStep];
-    calibPts[def.key] = pt;
+  function findCorrectionHandle(point) {
+    if (!roi) return null;
+    for (const handle of getResizeHandles(correctionRoiShape(roi))) {
+      if (Math.hypot(point.x - handle.x, point.y - handle.y) <= 8) return handle.h;
+    }
+    return null;
+  }
 
-    // Mark step done
-    const stepEl = document.getElementById(def.stepId);
-    stepEl.classList.remove('active-step');
-    stepEl.classList.add('done-step');
+  function pointInCorrectionRoi(point) {
+    if (!roi) return false;
+    const x1 = Math.min(roi.x1, roi.x2) - 8;
+    const x2 = Math.max(roi.x1, roi.x2) + 8;
+    const y1 = Math.min(roi.y1, roi.y2) - 8;
+    const y2 = Math.max(roi.y1, roi.y2) + 8;
+    return point.x >= x1 && point.x <= x2 && point.y >= y1 && point.y <= y2;
+  }
 
-    calibStep++;
-    drawCalibOverlay();
+  function updateRoiStatus() {
+    if (!roi) {
+      roiStatus.textContent = 'Click and drag to place a rectangular direct-beam ROI.';
+      roiStatus.style.color = '#64748b';
+      return;
+    }
+    roiStatus.textContent = `Direct-beam ROI: ${Math.abs(roi.x2-roi.x1).toFixed(0)} × ${Math.abs(roi.y2-roi.y1).toFixed(0)} native px · drag to move; drag handles to resize`;
+    roiStatus.style.color = '#4ade80';
+  }
 
-    if (calibStep < POINT_DEFS.length) {
-      const next = POINT_DEFS[calibStep];
-      document.getElementById(next.stepId).classList.add('active-step');
-      setStatus(`Step ${calibStep + 1}/5 — click ${next.label}`, '#fb923c');
+  function finishRoiEdit() {
+    dragStart = dragCurrent = null;
+    roiMoveState = roiResizeState = null;
+    clearRoiBtn.disabled = !roi;
+    measureBtn.disabled = !roi || (source() === 'reference' && !referenceLoaded);
+    canvas.classList.remove('roi-dragging');
+    canvas.style.cursor = 'crosshair';
+    updateRoiStatus();
+    drawCorrectionRoi();
+  }
+
+  canvas.addEventListener('pointerdown', event => {
+    if (!canvas.width) return;
+    const point = eventPoint(event);
+    const handle = findCorrectionHandle(point);
+    if (handle) {
+      roiResizeState = {handle, start: point, original: {...roi}};
+    } else if (pointInCorrectionRoi(point)) {
+      roiMoveState = {start: point, original: {...roi}};
+      canvas.classList.add('roi-dragging');
     } else {
-      setStatus('All points marked — calculating…', '#4ade80');
-      runCalibration();
+      dragStart = point;
+      dragCurrent = point;
+    }
+    canvas.setPointerCapture(event.pointerId);
+    drawCorrectionRoi();
+  });
+  canvas.addEventListener('pointermove', event => {
+    const point = eventPoint(event);
+    if (roiResizeState) {
+      const dx = point.x - roiResizeState.start.x;
+      const dy = point.y - roiResizeState.start.y;
+      const original = roiResizeState.original;
+      const x1 = Math.min(original.x1, original.x2);
+      const x2 = Math.max(original.x1, original.x2);
+      const y1 = Math.min(original.y1, original.y2);
+      const y2 = Math.max(original.y1, original.y2);
+      const handle = roiResizeState.handle;
+      roi.x1 = ['nw','w','sw'].includes(handle) ? x1 + dx : x1;
+      roi.x2 = ['ne','e','se'].includes(handle) ? x2 + dx : x2;
+      roi.y1 = ['nw','n','ne'].includes(handle) ? y1 + dy : y1;
+      roi.y2 = ['sw','s','se'].includes(handle) ? y2 + dy : y2;
+      drawCorrectionRoi();
+      return;
+    }
+    if (roiMoveState) {
+      const dx = point.x - roiMoveState.start.x;
+      const dy = point.y - roiMoveState.start.y;
+      const original = roiMoveState.original;
+      roi = {
+        x1: original.x1 + dx, y1: original.y1 + dy,
+        x2: original.x2 + dx, y2: original.y2 + dy,
+      };
+      drawCorrectionRoi();
+      return;
+    }
+    if (dragStart) {
+      dragCurrent = point;
+      drawCorrectionRoi();
+      return;
+    }
+    const handle = findCorrectionHandle(point);
+    if (handle) {
+      const cursors = {nw:'nw-resize',n:'n-resize',ne:'ne-resize',e:'e-resize',se:'se-resize',s:'s-resize',sw:'sw-resize',w:'w-resize'};
+      canvas.style.cursor = cursors[handle] || 'crosshair';
+    } else {
+      canvas.style.cursor = pointInCorrectionRoi(point) ? 'move' : 'crosshair';
     }
   });
-
-  // ── Draw overlay ─────────────────────────────────────────────
-  function drawCalibOverlay() {
-    const W = calibOverlay.width, H = calibOverlay.height;
-    const sx = W / calibCanvas.width, sy = H / calibCanvas.height;
-    oCtx.clearRect(0, 0, W, H);
-
-    Object.entries(calibPts).forEach(([key, pt]) => {
-      const def = POINT_DEFS.find(d => d.key === key);
-      const x = pt.x * sx, y = pt.y * sy;
-      const col = def.color;
-
-      // Horizontal guide line (for vertical reference features)
-      if (key !== 'cam_edge_left' && key !== 'cam_edge_right') {
-        oCtx.save();
-        oCtx.setLineDash([6, 5]);
-        oCtx.strokeStyle = col + '88';
-        oCtx.lineWidth = 1;
-        oCtx.beginPath(); oCtx.moveTo(0, y); oCtx.lineTo(W, y);
-        oCtx.stroke();
-        oCtx.restore();
+  canvas.addEventListener('pointerup', event => {
+    if (dragStart) {
+      const end = eventPoint(event);
+      if (Math.abs(end.x - dragStart.x) >= 5 && Math.abs(end.y - dragStart.y) >= 5) {
+        roi = {x1: dragStart.x, y1: dragStart.y, x2: end.x, y2: end.y};
       }
-
-      // Crosshair
-      oCtx.save();
-      oCtx.strokeStyle = col; oCtx.lineWidth = 2;
-      oCtx.beginPath();
-      oCtx.moveTo(x - 14, y); oCtx.lineTo(x + 14, y);
-      oCtx.moveTo(x, y - 14); oCtx.lineTo(x, y + 14);
-      oCtx.stroke();
-      oCtx.beginPath(); oCtx.arc(x, y, 7, 0, Math.PI * 2);
-      oCtx.strokeStyle = col; oCtx.lineWidth = 2; oCtx.stroke();
-      oCtx.restore();
-
-      // Label
-      oCtx.save();
-      oCtx.font = 'bold 12px Segoe UI, sans-serif';
-      oCtx.fillStyle = col;
-      const lx = x + 16, ly = y - 6;
-      oCtx.fillText(def.label, lx, ly);
-      oCtx.restore();
-    });
-
-    // Δy arrow between shadow edge and specular
-    if (calibPts.shadow_edge && calibPts.specular) {
-      const se = calibPts.shadow_edge, sp = calibPts.specular;
-      const ax = (se.x - 60) * sx;
-      const sy1 = se.y * sy, sy2 = sp.y * sy;
-      oCtx.save();
-      oCtx.strokeStyle = '#fbbf24'; oCtx.lineWidth = 2;
-      oCtx.beginPath(); oCtx.moveTo(ax, sy1); oCtx.lineTo(ax, sy2); oCtx.stroke();
-      // Arrow heads
-      [[ax, sy1, -1], [ax, sy2, 1]].forEach(([x, y, d]) => {
-        oCtx.beginPath();
-        oCtx.moveTo(x, y); oCtx.lineTo(x - 5, y + d * 8); oCtx.lineTo(x + 5, y + d * 8);
-        oCtx.closePath(); oCtx.fillStyle = '#fbbf24'; oCtx.fill();
-      });
-      const mid = (sy1 + sy2) / 2;
-      oCtx.font = 'bold 11px Segoe UI, sans-serif';
-      oCtx.fillStyle = '#fbbf24';
-      oCtx.fillText(`Δy = ${Math.abs(sp.y - se.y).toFixed(1)} px`, ax + 8, mid);
-      oCtx.restore();
     }
-
-    // Camera diameter line — any two diametrically opposite points
-    if (calibPts.cam_edge_left && calibPts.cam_edge_right) {
-      const el = calibPts.cam_edge_left, er = calibPts.cam_edge_right;
-      const x1 = el.x * sx, y1 = el.y * sy, x2 = er.x * sx, y2 = er.y * sy;
-      const D  = Math.hypot(x2 - x1, y2 - y1);
-      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-      oCtx.save();
-      oCtx.strokeStyle = '#38bdf8'; oCtx.lineWidth = 2;
-      oCtx.beginPath();
-      oCtx.moveTo(x1, y1); oCtx.lineTo(x2, y2);
-      oCtx.stroke();
-      oCtx.font = 'bold 11px Segoe UI, sans-serif';
-      oCtx.fillStyle = '#38bdf8';
-      oCtx.fillText(`D = ${D.toFixed(1)} px`, mx - 30, my - 8);
-      oCtx.restore();
-    }
-  }
-
-  // ── Run calibration ──────────────────────────────────────────
-  async function runCalibration() {
-    const W = calibCanvas.width, H = calibCanvas.height;
-    const r = calibCanvas.getBoundingClientRect();
-    try {
-      const res  = await fetch('/calibrate', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          points: calibPts,
-          params: {
-            L_cm: parseFloat(inputL.value),
-            D_cm: parseFloat(inputD.value),
-            display_w: W, display_h: H,
-          }
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      calibResult = data;
-      showResults(data);
-      setStatus(`✓  α = ${data.alpha_deg}°`, '#4ade80');
-    } catch (e) {
-      showToast('Calibration error: ' + e.message, true);
-      setStatus('Error — check console', '#f87171');
-    }
-  }
-
-  function showResults(d) {
-    resultsCard.style.display = '';
-    resultTable.innerHTML = `
-      <tr><td>Scale</td><td>${d.scale_cm_px} cm/px</td></tr>
-      <tr><td>Screen D</td><td>${d.D_px} px</td></tr>
-      <tr><td>Direct beam row</td><td>${d.rows.direct_beam} px</td></tr>
-      <tr><td>Shadow edge row</td><td>${d.rows.shadow_edge} px</td></tr>
-      <tr><td>Specular row</td><td>${d.rows.specular} px</td></tr>
-      <tr><td>Δy</td><td>${d.dy_px} px = ${d.dy_cm} cm</td></tr>
-      <tr class="highlight"><td>α (incidence)</td><td>${d.alpha_deg}°</td></tr>
-    `;
-  }
-
-  // ── Undo / Clear ─────────────────────────────────────────────
-  calibUndo.addEventListener('click', () => {
-    if (calibStep === 0) return;
-    calibStep--;
-    const def = POINT_DEFS[calibStep];
-    delete calibPts[def.key];
-    document.getElementById(def.stepId).classList.remove('done-step', 'active-step');
-    document.getElementById(def.stepId).classList.add('active-step');
-    if (calibStep + 1 < POINT_DEFS.length) {
-      document.getElementById(POINT_DEFS[calibStep + 1].stepId).classList.remove('active-step');
-    }
-    drawCalibOverlay();
-    resultsCard.style.display = 'none';
-    setStatus(`Step ${calibStep + 1}/5 — click ${def.label}`, '#fb923c');
+    finishRoiEdit();
   });
 
-  calibClear.addEventListener('click', resetCalib);
+  function resetRoi() {
+    roi = dragStart = dragCurrent = roiMoveState = roiResizeState = null;
+    clearRoiBtn.disabled = true;
+    measureBtn.disabled = true;
+    updateRoiStatus();
+    drawCorrectionRoi();
+  }
+  clearRoiBtn.addEventListener('click', resetRoi);
 
-  function resetCalib() {
-    calibPts  = {};
-    calibStep = 0;
-    calibResult = null;
-    oCtx.clearRect(0, 0, calibOverlay.width, calibOverlay.height);
-    resultsCard.style.display = 'none';
-    POINT_DEFS.forEach((d, i) => {
-      const el = document.getElementById(d.stepId);
-      el.classList.remove('done-step', 'active-step');
-      if (i === 0) el.classList.add('active-step');
-    });
-    if (calibLoaded) setStatus('Click the Direct Beam (step 1 of 5)', '#fb923c');
+  function correctionFitSize() {
+    if (!canvas.width || !canvas.height) return {width: 0, height: 0};
+    const availableWidth = wrap.clientWidth || wrap.getBoundingClientRect().width;
+    const availableHeight = wrap.clientHeight || wrap.getBoundingClientRect().height;
+    const scale = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
+    return {width: canvas.width * scale, height: canvas.height * scale};
   }
 
-  // ── Export JSON ───────────────────────────────────────────────
-  calibExport.addEventListener('click', () => {
-    if (!calibResult) return;
-    const out = {
-      ...calibResult,
-      L_cm: parseFloat(inputL.value),
-      D_cm: parseFloat(inputD.value),
-      points_px: calibPts,
+  function applyCorrectionZoom() {
+    if (!canvas.width || !canvas.height) return;
+    const fit = correctionFitSize();
+    canvas.style.width = (fit.width * correctionZoom) + 'px';
+    canvas.style.height = (fit.height * correctionZoom) + 'px';
+    document.getElementById('corr-zoom-label').textContent = Math.round(correctionZoom * 100) + '%';
+    syncOverlay();
+  }
+
+  function setCorrectionZoom(value) {
+    correctionZoom = Math.max(CORR_ZOOM_MIN, Math.min(CORR_ZOOM_MAX, value));
+    applyCorrectionZoom();
+  }
+
+  document.getElementById('corr-zoom-in').addEventListener('click', () => setCorrectionZoom(correctionZoom * 1.25));
+  document.getElementById('corr-zoom-out').addEventListener('click', () => setCorrectionZoom(correctionZoom / 1.25));
+  document.getElementById('corr-zoom-reset').addEventListener('click', () => setCorrectionZoom(1));
+  wrap.addEventListener('wheel', event => {
+    if (!canvas.width) return;
+    event.preventDefault();
+    setCorrectionZoom(correctionZoom * (event.deltaY < 0 ? 1.1 : 1 / 1.1));
+  }, {passive:false});
+
+  async function drawBitmap(bitmap, resetSelection = false) {
+    const width = bitmap.naturalWidth || bitmap.width;
+    const height = bitmap.naturalHeight || bitmap.height;
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(bitmap, 0, 0);
+    hint.style.display = 'none';
+    if (resetSelection) {
+      correctionZoom = 1;
+      resetRoi();
+    } else {
+      drawCorrectionRoi();
+    }
+    requestAnimationFrame(applyCorrectionZoom);
+  }
+
+  function stopCorrectionPlayback() {
+    videoPlaying = false;
+    playerButtons.play.textContent = '▶';
+    if (videoTimer) clearTimeout(videoTimer);
+    videoTimer = null;
+  }
+
+  function configureCorrectionVideo(nFrames, fps, index = 0) {
+    stopCorrectionPlayback();
+    videoFrames = Math.max(0, Number(nFrames) || 0);
+    videoFps = Math.max(1, Math.min(60, Math.round(Number(fps) || 7)));
+    corrFpsSlider.value = videoFps;
+    corrFpsValue.textContent = `${videoFps} FPS`;
+    videoIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(0, videoFrames - 1)));
+    corrSlider.max = Math.max(0, videoFrames - 1);
+    corrSlider.value = videoIndex;
+    corrSlider.disabled = videoFrames < 2;
+    Object.values(playerButtons).forEach(button => { button.disabled = videoFrames < 1; });
+    corrFrameLabel.textContent = videoFrames ? `${videoIndex + 1} / ${videoFrames}` : 'No video';
+  }
+
+  corrFpsSlider.addEventListener('input', () => {
+    videoFps = Number(corrFpsSlider.value) || 7;
+    corrFpsValue.textContent = `${videoFps} FPS`;
+  });
+
+  async function correctionFrameImage(index) {
+    const endpoint = source() === 'reference'
+      ? `/intensity_correction/reference/frame/${index}`
+      : `/frame/${index}`;
+    const response = await fetch(endpoint, {cache:'no-store'});
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || `Server error ${response.status}`);
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve; image.onerror = reject;
+      image.src = 'data:image/png;base64,' + data.image;
+    });
+    return {image, timestamp:Number(data.timestamp) || 0};
+  }
+
+  async function showCorrectionFrame(index, resetSelection = false) {
+    if (!videoFrames) return;
+    const generation = ++frameRequestGeneration;
+    index = Math.max(0, Math.min(Number(index) || 0, videoFrames - 1));
+    const loaded = await correctionFrameImage(index);
+    if (generation !== frameRequestGeneration) return;
+    videoIndex = index;
+    corrSlider.value = index;
+    corrFrameLabel.textContent = `${index + 1} / ${videoFrames}  (t = ${loaded.timestamp.toFixed(3)} s)`;
+    await drawBitmap(loaded.image, resetSelection);
+  }
+
+  document.getElementById('corr-load-frame').addEventListener('click', async () => {
+    if (!state.nFrames) { showToast('Load a dataset in Analysis first', true); return; }
+    try {
+      configureCorrectionVideo(state.nFrames, state.fps, state.currentFrame || 0);
+      await showCorrectionFrame(videoIndex, true);
+    } catch (error) { showToast('Could not load Analysis frame: ' + error.message, true); }
+  });
+
+  referenceButton.addEventListener('click', () => referenceInput.click());
+  referenceInput.addEventListener('change', async () => {
+    const file = referenceInput.files[0];
+    if (!file) return;
+    showLoading('Loading correction reference…');
+    try {
+      const body = new FormData(); body.append('file', file);
+      const response = await fetch('/intensity_correction/reference', {method:'POST', body});
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || `Server error ${response.status}`);
+      const image = new Image();
+      await new Promise((resolve, reject) => {
+        image.onload = resolve; image.onerror = reject;
+        image.src = 'data:image/png;base64,' + data.image;
+      });
+      referenceLoaded = true;
+      referenceMeta = data;
+      referenceName.style.display = '';
+      referenceName.textContent = `${data.label} · ${data.n_frames} frames`;
+      configureCorrectionVideo(data.n_frames, data.fps, 0);
+      videoIndex = 0;
+      corrFrameLabel.textContent = `1 / ${videoFrames}  (t = ${Number(data.timestamp || 0).toFixed(3)} s)`;
+      await drawBitmap(image, true);
+      showToast('Reference video loaded; draw its direct-beam ROI.');
+    } catch (error) { showToast(error.message, true); }
+    finally { hideLoading(); referenceInput.value = ''; }
+  });
+
+  document.querySelectorAll('input[name="corr-source"]').forEach(input => {
+    input.addEventListener('change', () => {
+      const separate = source() === 'reference';
+      document.getElementById('corr-load-frame').style.display = separate ? 'none' : '';
+      referenceButton.style.display = separate ? '' : 'none';
+      referenceName.style.display = separate && referenceLoaded ? '' : 'none';
+      background.disabled = separate;
+      if (separate) background.checked = false;
+      stopCorrectionPlayback();
+      resetRoi();
+      if (separate && referenceMeta) {
+        configureCorrectionVideo(referenceMeta.n_frames, referenceMeta.fps, 0);
+        showCorrectionFrame(0, true).catch(error => showToast(error.message, true));
+      } else if (!separate && state.nFrames) {
+        configureCorrectionVideo(state.nFrames, state.fps, state.currentFrame || 0);
+        showCorrectionFrame(videoIndex, true).catch(error => showToast(error.message, true));
+      } else {
+        configureCorrectionVideo(0, 1, 0);
+        hint.style.display = '';
+      }
+    });
+  });
+
+  playerButtons.first.addEventListener('click', () => {
+    stopCorrectionPlayback(); showCorrectionFrame(0).catch(error => showToast(error.message, true));
+  });
+  playerButtons.prev.addEventListener('click', () => {
+    stopCorrectionPlayback(); showCorrectionFrame(videoIndex - 1).catch(error => showToast(error.message, true));
+  });
+  playerButtons.next.addEventListener('click', () => {
+    stopCorrectionPlayback(); showCorrectionFrame(videoIndex + 1).catch(error => showToast(error.message, true));
+  });
+  playerButtons.last.addEventListener('click', () => {
+    stopCorrectionPlayback(); showCorrectionFrame(videoFrames - 1).catch(error => showToast(error.message, true));
+  });
+  corrSlider.addEventListener('input', () => {
+    stopCorrectionPlayback();
+    showCorrectionFrame(Number(corrSlider.value)).catch(error => showToast(error.message, true));
+  });
+  playerButtons.play.addEventListener('click', () => {
+    if (videoPlaying) { stopCorrectionPlayback(); return; }
+    if (!videoFrames) return;
+    videoPlaying = true;
+    playerButtons.play.textContent = '⏸';
+    const advance = async () => {
+      if (!videoPlaying) return;
+      const next = videoIndex >= videoFrames - 1 ? 0 : videoIndex + 1;
+      try { await showCorrectionFrame(next); }
+      catch (error) { stopCorrectionPlayback(); showToast(error.message, true); return; }
+      if (videoPlaying) videoTimer = setTimeout(advance, Math.max(15, 1000 / videoFps));
     };
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], {type:'application/json'}));
-    a.download = 'rheed_calibration.json';
-    a.click();
+    advance();
   });
 
-  // ── Save Image (frame + overlay composited) ───────────────────
-  document.getElementById('calib-save-img').addEventListener('click', async () => {
-    const tmp = document.createElement('canvas');
-    tmp.width  = calibCanvas.width;
-    tmp.height = calibCanvas.height;
-    const ctx = tmp.getContext('2d');
-    ctx.drawImage(calibCanvas, 0, 0);
-    ctx.drawImage(calibOverlay, 0, 0);
-    try {
-      await saveBlobToAnalysisFolder(await canvasPngBlob(tmp), 'rheed_calibration.png');
-    } catch (error) {
-      showToast(`Could not save calibration image: ${error.message}`, true);
+  function plotCorrection(data) {
+    const raw = data.measured_intensities || [];
+    const reference = Number(data.reference_intensity) || 1;
+    const rawNormalized = raw.map(value => Number(value) / reference);
+    const traces = [
+      {x:data.timestamps, y:rawNormalized, mode:'lines', name:'Measured / maximum', line:{color:'#64748b',width:1}},
+      {x:data.timestamps, y:data.normalized_curve, mode:'lines', name:'Saved smoothed correction (0–1)', line:{color:'#7dd3fc',width:2.5}},
+    ];
+    if (
+      Array.isArray(data.application_curve) &&
+      data.application_curve.length === data.timestamps.length &&
+      data.application_curve.some((value, index) => Math.abs(Number(value) - Number(data.normalized_curve[index])) > 1e-12)
+    ) {
+      traces.push({
+        x:data.timestamps, y:data.application_curve, mode:'lines',
+        name:'Actually applied after safety cap', line:{color:'#fb923c',width:2,dash:'dash'},
+      });
     }
-  });
-
-  function setStatus(msg, color='#94a3b8') {
-    calibStatus.textContent = msg;
-    calibStatus.style.color = color;
+    Plotly.react('corr-chart', traces, {
+      paper_bgcolor:'#1a1d27', plot_bgcolor:'#0f1117', font:{color:'#94a3b8',size:11},
+      margin:{l:55,r:16,t:30,b:42},
+      xaxis:{title:'Reference time (s)',gridcolor:'#1e293b'},
+      yaxis:{title:'Direct-beam sensitivity',range:[0,1.05],gridcolor:'#1e293b'},
+      legend:{orientation:'h',y:1.12},
+    }, {responsive:true,displaylogo:false});
   }
 
-  // Reload frame when tab is switched to Calibration
-  document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => {
-      if (t.dataset.tab === 'calib' && !calibLoaded && state.nFrames > 0) {
-        loadCalibFrame();
+  function refreshConsumers() {
+    if (state.chartData) drawIntensityChart(state.currentFrame);
+    if (typeof fftRefreshAll === 'function') fftRefreshAll();
+    if (window._refreshRockingCorrection) window._refreshRockingCorrection();
+    if (typeof persistIntensityAnalysis === 'function') persistIntensityAnalysis();
+    clearFrameCache();
+  }
+
+  function activateCorrection(data, apply = true) {
+    state.intensityCorrection = {...data, applyCurves: apply, applyVideo: false};
+    applyCurves.disabled = false; applyCurves.checked = apply;
+    applyVideo.disabled = false; applyVideo.checked = false;
+    exportBtn.disabled = false; clearBtn.disabled = false;
+    applyStatus.textContent = apply ? 'Correction is active for intensity and rocking curves.' : 'Correction loaded but not applied.';
+    applyStatus.style.color = apply ? '#4ade80' : '#64748b';
+    plotCorrection(data);
+    refreshConsumers();
+  }
+
+  measureBtn.addEventListener('click', async () => {
+    if (!roi) return;
+    measureBtn.disabled = true;
+    showLoading('Measuring direct-beam intensity…');
+    try {
+      const response = await fetch('/intensity_correction', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          source:source(), roi, display_w:canvas.width, display_h:canvas.height,
+          smoothing_window:Number(document.getElementById('corr-smooth').value),
+          max_factor:Number(document.getElementById('corr-max-factor').value),
+          use_background_subtraction:background.checked,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || `Server error ${response.status}`);
+      activateCorrection(data, true);
+      const saved = data.correction_files && data.correction_files.csv;
+      const notices = [];
+      if (Number(data.smoothing_window) > 1) {
+        notices.push('Smoothing is enabled, so the measured ROI will not self-normalize exactly at sharp transitions.');
       }
-      if (t.dataset.tab === 'calib') syncCalibOverlay();
-    });
+      if (Number(data.cap_engaged_frames) > 0) {
+        const needed = Number(data.required_max_factor);
+        notices.push(`The safety cap affects ${data.cap_engaged_frames} frame(s)` +
+          (Number.isFinite(needed) ? `; use at least ${needed.toFixed(1)}× to preserve all positive measurements.` : '.'));
+      }
+      if (Number(data.zero_intensity_frames) > 0) {
+        notices.push(`${data.zero_intensity_frames} zero-intensity frame(s) cannot be normalized exactly.`);
+      }
+      const required = Number(data.required_max_factor);
+      if (Number.isFinite(required) && required > 100) {
+        notices.push(`This correction reaches ${required.toFixed(1)}×; small differences or noise in other ROIs will be amplified strongly.`);
+      }
+      saveStatus.textContent = (saved ? `Saved normalized correction: ${saved}` : 'Correction saved.') +
+        (notices.length ? ` ${notices.join(' ')}` : ' No smoothing or safety clipping was applied.');
+      saveStatus.style.color = notices.length ? '#fb923c' : '#4ade80';
+      if (window._grAnalysisRefreshStorage) window._grAnalysisRefreshStorage();
+    } catch (error) {
+      saveStatus.textContent = 'Correction error: ' + error.message;
+      saveStatus.style.color = '#f87171';
+    } finally { hideLoading(); measureBtn.disabled = !roi; }
   });
 
+  applyCurves.addEventListener('change', () => {
+    if (!state.intensityCorrection) return;
+    state.intensityCorrection.applyCurves = applyCurves.checked;
+    applyStatus.textContent = applyCurves.checked ? 'Correction is active for analysis curves.' : 'Curve correction is off.';
+    refreshConsumers();
+  });
+  applyVideo.addEventListener('change', () => {
+    if (!state.intensityCorrection) return;
+    state.intensityCorrection.applyVideo = applyVideo.checked;
+    if (applyVideo.checked) {
+      const autoControls = [document.getElementById('clim-auto-every'), document.getElementById('gr-clim-auto-every')];
+      autoControls.forEach(control => { if (control) control.checked = false; });
+    }
+    applyStatus.textContent = applyVideo.checked ? 'Video playback and frame exports are corrected.' : 'Video correction is off.';
+    refreshConsumers();
+  });
+
+  exportBtn.addEventListener('click', () => {
+    const data = state.intensityCorrection;
+    if (!data) return;
+    const rows = ['time_s,measured_intensity,smoothed_intensity,normalized_correction'];
+    (data.timestamps || []).forEach((time, index) => rows.push([
+      time, data.measured_intensities[index], data.baseline_intensities[index], data.normalized_curve[index],
+    ].join(',')));
+    const url = URL.createObjectURL(new Blob([rows.join('\n')], {type:'text/csv'}));
+    const anchor = document.createElement('a'); anchor.href = url;
+    anchor.download = 'rheed_direct_beam_correction.csv'; anchor.click();
+    URL.revokeObjectURL(url);
+  });
+
+  function clearCorrection(resetSelection = false) {
+    state.intensityCorrection = null;
+    applyCurves.checked = applyVideo.checked = false;
+    applyCurves.disabled = applyVideo.disabled = exportBtn.disabled = clearBtn.disabled = true;
+    applyStatus.textContent = 'No correction measured.';
+    applyStatus.style.color = '#64748b';
+    Plotly.purge('corr-chart');
+    clearFrameCache();
+    if (resetSelection) {
+      stopCorrectionPlayback();
+      resetRoi();
+      if (source() === 'active') {
+        canvas.width = canvas.height = 0;
+        overlay.width = overlay.height = 0;
+        configureCorrectionVideo(0, 1, 0);
+        hint.style.display = '';
+      }
+    }
+    if (state.chartData) drawIntensityChart(state.currentFrame);
+    if (window._refreshRockingCorrection) window._refreshRockingCorrection();
+  }
+  clearBtn.addEventListener('click', () => clearCorrection(false));
+  window._resetIntensityCorrection = clearCorrection;
+  window._restoreIntensityCorrection = payload => activateCorrection(payload.result || payload, true);
+
+  document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'calib' && source() === 'active' && state.nFrames && !canvas.width) {
+      document.getElementById('corr-load-frame').click();
+    }
+    if (tab.dataset.tab === 'calib') setTimeout(applyCorrectionZoom, 0);
+  }));
+  window.addEventListener('resize', applyCorrectionZoom);
 })();
 
 // ── Viewer window controls ───────────────────────────────────
@@ -5112,6 +5495,9 @@ openChartFab.addEventListener('click', () => {
         show_direct_beam: document.getElementById('alpha-show-db').checked,
         show_sine_fit: document.getElementById('alpha-show-sine').checked,
         rocking_alpha_source: document.querySelector('input[name="rock-alpha-src"]:checked')?.value || 'sine',
+        intensity_correction_applied: Boolean(
+          state.intensityCorrection && state.intensityCorrection.applyCurves
+        ),
       };
     }
 
@@ -5345,7 +5731,7 @@ openChartFab.addEventListener('click', () => {
       } else return;
 
       if (data.specular && data.specular.intensity_norm) {
-        spec_intens = data.specular.intensity_norm;
+        spec_intens = correctedIntensityValues(data.specular.intensity_norm, data.timestamps);
       } else return;
 
       const traces = [{
@@ -5360,7 +5746,8 @@ openChartFab.addEventListener('click', () => {
         font:   { color: '#94a3b8', size: 11 },
         margin: { l: 60, r: 60, t: 16, b: 48 },
         xaxis:  { title: 'α (°)', gridcolor: '#1e293b', zerolinecolor: '#334155' },
-        yaxis:  { title: 'Norm. Intensity', gridcolor: '#1e293b', zerolinecolor: '#334155' },
+        yaxis:  { title: state.intensityCorrection && state.intensityCorrection.applyCurves
+          ? 'Current-corrected intensity' : 'Norm. Intensity', gridcolor: '#1e293b', zerolinecolor: '#334155' },
         legend: { bgcolor: 'rgba(0,0,0,0)', font: { size: 10 } },
       };
       Plotly.react('rock-plotly', traces, layout, { responsive: true, displayModeBar: false });
@@ -5372,6 +5759,9 @@ openChartFab.addEventListener('click', () => {
     document.getElementById('rock-refresh-btn').addEventListener('click', () => {
       if (trackData) renderRockingChart(trackData);
     });
+    window._refreshRockingCorrection = () => {
+      if (trackData && _currentAlphaTab === 'rock') renderRockingChart(trackData);
+    };
     document.querySelectorAll('input[name="rock-alpha-src"]').forEach(r =>
       r.addEventListener('change', () => {
         if (trackData) renderRockingChart(trackData);
@@ -5448,12 +5838,20 @@ openChartFab.addEventListener('click', () => {
       const ts   = trackData.timestamps;
       const spec = trackData.specular;
       const db   = trackData.direct_beam;
+      const correctedSpec = spec
+        ? correctedIntensityValues(spec.intensity_norm || [], ts) : [];
+      const correctionApplied = Boolean(
+        state.intensityCorrection && state.intensityCorrection.applyCurves
+      );
       let hdr = 'time_s';
-      if (spec) hdr += ',alpha_specular_deg,intensity_spec_norm,peak_row_spec,peak_col_spec';
+      if (spec) hdr += ',alpha_specular_deg,intensity_spec_norm' +
+        (correctionApplied ? ',intensity_spec_current_corrected' : '') +
+        ',peak_row_spec,peak_col_spec';
       if (db)   hdr += ',alpha_db_deg,alpha_db_sine,intensity_db_norm,peak_row_db,peak_col_db';
       const rows = ts.map((t,i) => {
         let r = t.toFixed(4);
-        if (spec) r += `,${spec.alpha_deg[i]},${(spec.intensity_norm||[])[i]??''},${spec.peak_row[i]},${spec.peak_col[i]}`;
+        if (spec) r += `,${spec.alpha_deg[i]},${(spec.intensity_norm||[])[i]??''}` +
+          `${correctionApplied ? ',' + (correctedSpec[i] ?? '') : ''},${spec.peak_row[i]},${spec.peak_col[i]}`;
         if (db)   r += `,${db.alpha_deg[i]},${(db.alpha_sine||[])[i]??''},${(db.intensity_norm||[])[i]??''},${db.peak_row[i]},${db.peak_col[i]}`;
         return r;
       });
@@ -5464,8 +5862,22 @@ openChartFab.addEventListener('click', () => {
 
     document.getElementById('alpha-export-json').addEventListener('click', () => {
       if (!trackData) return;
+      const exportData = {...trackData};
+      if (state.intensityCorrection && state.intensityCorrection.applyCurves && trackData.specular) {
+        exportData.specular = {
+          ...trackData.specular,
+          intensity_current_corrected: correctedIntensityValues(
+            trackData.specular.intensity_norm || [], trackData.timestamps
+          ),
+        };
+        exportData.intensity_correction = {
+          source_label: state.intensityCorrection.source_label,
+          correction_files: state.intensityCorrection.correction_files,
+          normalization: state.intensityCorrection.normalization,
+        };
+      }
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([JSON.stringify(trackData, null, 2)], {type:'application/json'}));
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(exportData, null, 2)], {type:'application/json'}));
       a.download = 'rheed_alpha_tracking.json'; a.click();
     });
 
@@ -5598,7 +6010,7 @@ openChartFab.addEventListener('click', () => {
   window._grResetCalibrationForDataset = grResetCalibrationForDataset;
 
   const GR_RECALLABLE_KINDS = new Set([
-    'growth-spacing-measurements', 'intensity', 'strip-tracking', 'calibration',
+    'growth-spacing-measurements', 'intensity', 'intensity-correction', 'strip-tracking', 'calibration',
     'ai-inference',
   ]);
 
@@ -5827,6 +6239,8 @@ openChartFab.addEventListener('click', () => {
         recalledArtifactId: payload.artifact_id,
         label: series.label || `Recalled intensity ${index + 1}`,
         color: series.color || ROI_COLORS[index % ROI_COLORS.length],
+        roi: series.roi || null,
+        use_background_subtraction: Boolean(series.use_background_subtraction),
         intensities: series.intensities || [],
         timestamps: series.timestamps || [],
       }));
@@ -6081,6 +6495,7 @@ openChartFab.addEventListener('click', () => {
       if (!response.ok || payload.error) throw new Error(payload.error || `Server error ${response.status}`);
       if (payload.kind === 'growth-spacing-measurements') grRestoreGrowthMeasurements(payload);
       else if (payload.kind === 'intensity') grRestoreIntensity(payload);
+      else if (payload.kind === 'intensity-correction' && window._restoreIntensityCorrection) window._restoreIntensityCorrection(payload);
       else if (payload.kind === 'strip-tracking') grRestoreStripTracking(payload);
       else if (payload.kind === 'calibration') grRestoreFrameCalibration(payload);
       else throw new Error(`No visual recall handler exists for ${payload.kind}`);
@@ -6177,6 +6592,7 @@ openChartFab.addEventListener('click', () => {
 
   async function grAfterLoad(label) {
     setLoadedDatasetName(label);
+    if (window._resetIntensityCorrection) window._resetIntensityCorrection(true);
     grFileInfo.innerHTML = `<b>File:</b> ${label}<br><b>Frames:</b> ${state.nFrames}`;
     grIdx = 0;
     grResetCalibrationForDataset();
@@ -6290,11 +6706,11 @@ openChartFab.addEventListener('click', () => {
   });
 
   // ── Save frame(s) into the active analysis run ─────────────────────────
-  async function grSaveServerExport(url, filename) {
+  async function grSaveServerExport(url, filename, extra = {}) {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename }),
+      body: JSON.stringify({ filename, ...extra }),
     });
     const data = await response.json();
     if (!response.ok || data.error) throw new Error(data.error || `Server error ${response.status}`);
@@ -6309,6 +6725,7 @@ openChartFab.addEventListener('click', () => {
       await grSaveServerExport(
         `/analysis/figures/frame/${grIdx}`,
         `rheed_frame_${grIdx + 1}.png`,
+        { intensity_scale: videoCorrectionScale(grIdx) },
       );
     } catch (error) {
       showToast(`Could not save frame: ${error.message}`, true);
@@ -6321,7 +6738,13 @@ openChartFab.addEventListener('click', () => {
     grSaveAllBtn.disabled = true;
     showToast(`Saving ${state.nFrames} frames as a ZIP — this may take a moment…`);
     try {
-      await grSaveServerExport('/analysis/figures/all-frames', 'rheed_frames.zip');
+      await grSaveServerExport(
+        '/analysis/figures/all-frames',
+        'rheed_frames.zip',
+        state.intensityCorrection && state.intensityCorrection.applyVideo
+          ? { intensity_scales: Array.from({length: state.nFrames}, (_, index) => videoCorrectionScale(index)) }
+          : {},
+      );
     } catch (error) {
       showToast(`Could not save frame archive: ${error.message}`, true);
     } finally {
@@ -7474,6 +7897,7 @@ openChartFab.addEventListener('click', () => {
         true,
         grIdx,
         grBackgroundConfigFromControls(),
+        {rescaleContrast:false},
       );
       await grShowFrame(grIdx);
       if (grRoiUseBackground.checked) grRoiInputChanged();
@@ -7778,6 +8202,7 @@ openChartFab.addEventListener('click', () => {
       state.rois = [];
       renderRoiList();
       updateComputeBtn();
+      if (window._resetIntensityCorrection) window._resetIntensityCorrection(true);
       window.rheedCalib = null;
       const calibResultCard = document.getElementById('gr-fv-calib-result');
       if (calibResultCard) calibResultCard.style.display = 'none';
@@ -7788,7 +8213,7 @@ openChartFab.addEventListener('click', () => {
       grZoomLevel = 1;
       await grShowFrame(grIdx);
       await grAnalysisRefreshStorage();
-      showToast('Frame rotated — ROIs & calibration were reset.');
+      showToast('Frame rotated — ROIs, calibration, and intensity correction were reset.');
     } catch (e) {
       showToast('Error: ' + e.message, true);
     } finally {
@@ -9981,6 +10406,1006 @@ openChartFab.addEventListener('click', () => {
   // longer in the tab bar), so run the same activation a click would —
   // nothing else triggers it on initial page load.
   grOnActivate();
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  Local simulation adapters
+// ═══════════════════════════════════════════════════════════════
+(function () {
+  const adapterEl = document.getElementById('sim-adapter');
+  if (!adapterEl) return;
+  const idEl = document.getElementById('sim-id');
+  const deviceEl = document.getElementById('sim-device');
+  const descriptionEl = document.getElementById('sim-adapter-description');
+  const inputsEl = document.getElementById('sim-inputs');
+  const optionsEl = document.getElementById('sim-options');
+  const runBtn = document.getElementById('sim-run');
+  const cancelBtn = document.getElementById('sim-cancel');
+  const progressEl = document.getElementById('sim-progress');
+  const statusEl = document.getElementById('sim-status');
+  const savedEl = document.getElementById('sim-saved-runs');
+  const recallBtn = document.getElementById('sim-recall');
+  const refreshBtn = document.getElementById('sim-refresh');
+  const csvBtn = document.getElementById('sim-download-csv');
+  const npzBtn = document.getElementById('sim-download-npz');
+  const resultTitle = document.getElementById('sim-result-title');
+  const resultPath = document.getElementById('sim-result-path');
+  const detectorStage = document.getElementById('sim-detector-stage');
+  const detectorCanvas = document.getElementById('sim-detector-canvas');
+  const measureCanvas = document.getElementById('sim-measure-canvas');
+  const detectorCtx = detectorCanvas.getContext('2d');
+  const measureCtx = measureCanvas.getContext('2d');
+  const detectorHint = document.getElementById('sim-detector-hint');
+  const frameSlider = document.getElementById('sim-frame-slider');
+  const frameLabel = document.getElementById('sim-frame-label');
+  const firstBtn = document.getElementById('sim-btn-first');
+  const prevBtn = document.getElementById('sim-btn-prev');
+  const playBtn = document.getElementById('sim-btn-play');
+  const nextBtn = document.getElementById('sim-btn-next');
+  const lastBtn = document.getElementById('sim-btn-last');
+  const fpsSlider = document.getElementById('sim-fps-slider');
+  const fpsValue = document.getElementById('sim-fps-value');
+  const displayScale = document.getElementById('sim-display-scale');
+  const colormap = document.getElementById('sim-colormap');
+  const saveImageBtn = document.getElementById('sim-save-image');
+  const saveGifBtn = document.getElementById('sim-save-gif');
+  const measureModeBtn = document.getElementById('sim-mode-measure');
+  const panModeBtn = document.getElementById('sim-mode-pan');
+  const clearMeasurementsBtn = document.getElementById('sim-clear-measurements');
+  const measureStatus = document.getElementById('sim-measure-status');
+  const measurementList = document.getElementById('sim-measurements');
+  const plotEl = document.getElementById('sim-plot');
+
+  let adapters = [];
+  let activeRunId = null;
+  let currentResult = null;
+  let pollTimer = null;
+  let initialized = false;
+  let currentFrame = 0;
+  let detectorGeneration = 0;
+  let detectorCache = new Map();
+  let detectorCacheBytes = 0;
+  const detectorRequests = new Map();
+  const DETECTOR_CACHE_MAX_ITEMS = 128;
+  const DETECTOR_CACHE_MAX_BYTES = 128 * 1024 * 1024;
+  let detectorDisplayGeneration = 0;
+  let detectorPrefetchQueue = [];
+  let detectorPrefetchQueued = new Set();
+  let detectorPrefetchActive = 0;
+  let detectorPrefetchGeneration = 0;
+  let detectorScrubDesired = null;
+  let detectorScrubBusy = false;
+  let detectorZoom = 1;
+  let playing = false;
+  let playTimer = null;
+  let playDeadline = 0;
+  let playBusy = false;
+  let playbackFps = Number(fpsSlider.value) || 7;
+  let measurements = [];
+  let measureMode = 'measure';
+  let measureDraft = null;
+  let measureEdit = null;
+  let panDrag = null;
+
+  function setStatus(message, color='#64748b') {
+    statusEl.textContent = message;
+    statusEl.style.color = color;
+  }
+
+  async function responseJson(response) {
+    let payload;
+    try { payload = await response.json(); }
+    catch (_) { throw new Error(`Request failed (${response.status})`); }
+    if (!response.ok || payload.error) throw new Error(payload.error || `Request failed (${response.status})`);
+    return payload;
+  }
+
+  function selectedAdapter() {
+    return adapters.find(adapter => adapter.name === adapterEl.value) || null;
+  }
+
+  function optionControl(name, schema, defaultValue) {
+    let control;
+    if (Array.isArray(schema.enum)) {
+      control = document.createElement('select');
+      schema.enum.forEach(value => {
+        const option = document.createElement('option');
+        option.value = String(value); option.textContent = String(value);
+        if (value === defaultValue) option.selected = true;
+        control.appendChild(option);
+      });
+      control.dataset.kind = 'string';
+    } else if (schema.type === 'boolean' || typeof defaultValue === 'boolean') {
+      control = document.createElement('input');
+      control.type = 'checkbox'; control.checked = Boolean(defaultValue);
+      control.style.justifySelf = 'start';
+      control.dataset.kind = 'boolean';
+    } else if (schema.type === 'object' || (defaultValue && typeof defaultValue === 'object')) {
+      control = document.createElement('textarea');
+      control.value = JSON.stringify(defaultValue || {}, null, 2);
+      control.rows = Math.min(18, Math.max(3, control.value.split('\n').length));
+      control.dataset.kind = 'object';
+    } else if (schema.type === 'number' || schema.type === 'integer' ||
+               (Array.isArray(schema.type) && schema.type.includes('number')) ||
+               typeof defaultValue === 'number' || defaultValue === null) {
+      control = document.createElement('input');
+      control.type = 'number'; control.step = schema.type === 'integer' ? '1' : 'any';
+      if (defaultValue !== null && defaultValue !== undefined) control.value = String(defaultValue);
+      if (schema.minimum !== undefined) control.min = schema.minimum;
+      if (schema.exclusiveMinimum !== undefined) control.min = schema.exclusiveMinimum;
+      control.dataset.kind = 'number';
+      control.dataset.nullable = String(defaultValue === null || (Array.isArray(schema.type) && schema.type.includes('null')));
+    } else {
+      control = document.createElement('input');
+      control.type = 'text'; control.value = defaultValue === undefined ? '' : String(defaultValue);
+      control.dataset.kind = 'string';
+    }
+    control.classList.add('sim-control');
+    control.dataset.option = name;
+    control.title = schema.description || name;
+    return control;
+  }
+
+  function renderAdapter() {
+    const adapter = selectedAdapter();
+    inputsEl.replaceChildren();
+    optionsEl.replaceChildren();
+    if (!adapter) {
+      descriptionEl.textContent = 'No simulation adapters were discovered.';
+      runBtn.disabled = true;
+      return;
+    }
+    const capabilityText = (adapter.capabilities || []).join(', ');
+    descriptionEl.textContent = `${adapter.description || ''}${capabilityText ? ` Capabilities: ${capabilityText}.` : ''}`;
+    (adapter.input_names || []).forEach(name => {
+      const label = document.createElement('label');
+      label.textContent = name;
+      const wrapper = document.createElement('div');
+      const input = document.createElement('input');
+      input.type = 'file'; input.className = 'sim-control'; input.dataset.input = name;
+      const fileName = document.createElement('div');
+      fileName.className = 'sim-file-name'; fileName.textContent = 'No file selected';
+      input.addEventListener('change', () => {
+        fileName.textContent = input.files[0]?.name || 'No file selected';
+      });
+      wrapper.append(input, fileName);
+      inputsEl.append(label, wrapper);
+    });
+    const defaults = adapter.default_options || {};
+    const properties = adapter.option_schema?.properties || {};
+    const names = [...new Set([...Object.keys(defaults), ...Object.keys(properties)])];
+    names.forEach(name => {
+      const label = document.createElement('label'); label.textContent = name.replaceAll('_', ' ');
+      optionsEl.append(label, optionControl(name, properties[name] || {}, defaults[name]));
+    });
+    runBtn.disabled = !adapter.available;
+    if (!adapter.available) {
+      setStatus(`Adapter unavailable: ${adapter.error || `install ${adapter.requirements?.join(', ') || 'its optional runtime'}`}`, '#f87171');
+    } else {
+      setStatus('Choose the required input files, adjust options, and run locally.');
+    }
+  }
+
+  function readOptions() {
+    const options = {};
+    optionsEl.querySelectorAll('[data-option]').forEach(control => {
+      const name = control.dataset.option;
+      if (control.dataset.kind === 'boolean') options[name] = control.checked;
+      else if (control.dataset.kind === 'object') {
+        try { options[name] = JSON.parse(control.value || '{}'); }
+        catch (_) { throw new Error(`${name} must contain valid JSON`); }
+      } else if (control.dataset.kind === 'number') {
+        if (control.value === '') {
+          if (control.dataset.nullable === 'true') options[name] = null;
+        } else {
+          const value = Number(control.value);
+          if (!Number.isFinite(value)) throw new Error(`${name} must be a finite number`);
+          options[name] = value;
+        }
+      } else options[name] = control.value;
+    });
+    return options;
+  }
+
+  async function loadAdapters() {
+    const payload = await responseJson(await fetch('/simulation/adapters', { cache:'no-store' }));
+    adapters = payload.adapters || [];
+    adapterEl.replaceChildren();
+    adapters.forEach(adapter => {
+      const option = document.createElement('option');
+      option.value = adapter.name;
+      option.textContent = `${adapter.name}${adapter.available ? '' : ' — unavailable'}`;
+      option.disabled = !adapter.available;
+      adapterEl.appendChild(option);
+    });
+    const firstAvailable = adapters.find(adapter => adapter.available);
+    if (firstAvailable) adapterEl.value = firstAvailable.name;
+    renderAdapter();
+  }
+
+  async function loadRuns() {
+    try {
+      const payload = await responseJson(await fetch('/simulation/runs', { cache:'no-store' }));
+      const runs = (payload.runs || []).filter(run => run.status === 'completed');
+      savedEl.replaceChildren();
+      if (!runs.length) {
+        const option = document.createElement('option'); option.value = ''; option.textContent = 'No saved simulations';
+        savedEl.appendChild(option); recallBtn.disabled = true; return;
+      }
+      runs.forEach(run => {
+        const option = document.createElement('option');
+        option.value = run.run_id;
+        const spec = run.simulation || {};
+        const date = String(run.completed_utc || run.created_utc || '').replace('T', ' ').slice(0, 19);
+        option.textContent = `${spec.id || run.run_id} · ${spec.adapter || 'adapter'} · ${date}`;
+        savedEl.appendChild(option);
+      });
+      recallBtn.disabled = false;
+    } catch (error) {
+      setStatus(`Could not list saved simulations: ${error.message}`, '#f87171');
+    }
+  }
+
+  async function runSimulation() {
+    const adapter = selectedAdapter();
+    if (!adapter || !adapter.available) return;
+    try {
+      const form = new FormData();
+      for (const name of adapter.input_names || []) {
+        const input = inputsEl.querySelector(`[data-input="${CSS.escape(name)}"]`);
+        if (!input?.files[0]) throw new Error(`Choose the ${name} input file`);
+        form.append(name, input.files[0]);
+      }
+      form.append('simulation', JSON.stringify({
+        id: idEl.value.trim() || 'local-simulation',
+        adapter: adapter.name,
+        options: readOptions(),
+      }));
+      form.append('device', deviceEl.value);
+      runBtn.disabled = true; cancelBtn.disabled = false; progressEl.style.width = '0%';
+      setStatus('Saving inputs and starting simulation…', '#7dd3fc');
+      const payload = await responseJson(await fetch('/simulation/run', { method:'POST', body:form }));
+      activeRunId = payload.run_id;
+      pollStatus();
+    } catch (error) {
+      runBtn.disabled = !adapter.available; cancelBtn.disabled = true;
+      setStatus(error.message, '#f87171');
+    }
+  }
+
+  async function pollStatus() {
+    if (!activeRunId) return;
+    clearTimeout(pollTimer);
+    try {
+      const payload = await responseJson(await fetch(`/simulation/jobs/${encodeURIComponent(activeRunId)}`, { cache:'no-store' }));
+      progressEl.style.width = `${Math.max(0, Math.min(100, 100 * (payload.progress || 0)))}%`;
+      if (payload.status === 'completed') {
+        cancelBtn.disabled = true; runBtn.disabled = !selectedAdapter()?.available;
+        await loadResult(activeRunId); await loadRuns();
+        if (payload.auto_export_error) {
+          setStatus(`Simulation saved, but its automatic GIF failed: ${payload.auto_export_error}`, '#fbbf24');
+        } else {
+          setStatus(`Simulation and detector GIF saved to ${payload.saved_to}`, '#4ade80');
+        }
+        return;
+      }
+      if (payload.status === 'failed' || payload.status === 'cancelled') {
+        cancelBtn.disabled = true; runBtn.disabled = !selectedAdapter()?.available;
+        setStatus(payload.error || `Simulation ${payload.status}.`, payload.status === 'failed' ? '#f87171' : '#fbbf24');
+        return;
+      }
+      setStatus(payload.status === 'queued' ? 'Simulation queued…' : 'Simulation running locally…', '#7dd3fc');
+      pollTimer = setTimeout(pollStatus, 500);
+    } catch (error) {
+      cancelBtn.disabled = true; runBtn.disabled = !selectedAdapter()?.available;
+      setStatus(`Could not read simulation status: ${error.message}`, '#f87171');
+    }
+  }
+
+  function varyingCoordinate(coordinates) {
+    const entries = Object.entries(coordinates || {});
+    return entries.find(([, values]) => values.some(value => value !== values[0])) || entries[0] || ['sample', []];
+  }
+
+  function renderPlot(result) {
+    const intensities = result.intensities;
+    const beams = result.beam_indices || [];
+    if (!intensities?.length || !beams.length) {
+      Plotly.purge(plotEl); return;
+    }
+    const [coordinateName, x] = varyingCoordinate(result.scan_coordinates);
+    const traces = beams.map((beam, beamIndex) => ({
+      x,
+      y: intensities.map(row => row[beamIndex]),
+      type:'scatter', mode:'lines',
+      name:`(${beam[0]}, ${beam[1]})`,
+      hovertemplate:`${coordinateName.replaceAll('_', ' ')}: %{x:.5g}<br>Intensity: %{y:.5g}<extra>${beam[0]}, ${beam[1]}</extra>`,
+    }));
+    Plotly.newPlot(plotEl, traces, {
+      margin:{l:64,r:20,t:34,b:52}, paper_bgcolor:'#090b11', plot_bgcolor:'#0f1117',
+      font:{color:'#94a3b8',size:11}, title:{text:'Simulated beam intensities',font:{size:13}},
+      xaxis:{title:coordinateName.replaceAll('_', ' '),gridcolor:'#1e293b'},
+      yaxis:{title:'Intensity',gridcolor:'#1e293b'},
+      legend:{orientation:'h',y:1.12}, hovermode:'closest',
+    }, {responsive:true,displaylogo:false});
+    if (typeof plotEl.removeAllListeners === 'function') plotEl.removeAllListeners('plotly_click');
+    plotEl.on('plotly_click', event => {
+      const index = event.points?.[0]?.pointIndex;
+      if (Number.isInteger(index) && !frameSlider.disabled) {
+        stopSimulationPlayback();
+        frameSlider.value = index;
+        queueDetectorScrub(index);
+      }
+    });
+  }
+
+  function closeDetectorBitmap(entry) {
+    if (entry?.bmp?.close) { try { entry.bmp.close(); } catch (_) {} }
+  }
+
+  function resetDetectorPrefetchQueue() {
+    detectorPrefetchGeneration += 1;
+    detectorPrefetchQueue = [];
+    detectorPrefetchQueued.clear();
+  }
+
+  function clearDetectorCache() {
+    detectorGeneration += 1;
+    detectorDisplayGeneration += 1;
+    detectorScrubDesired = null;
+    resetDetectorPrefetchQueue();
+    detectorCache.forEach(closeDetectorBitmap);
+    detectorCache = new Map();
+    detectorCacheBytes = 0;
+  }
+
+  function touchDetectorCache(index) {
+    const entry = detectorCache.get(index);
+    if (!entry) return;
+    detectorCache.delete(index);
+    detectorCache.set(index, entry);
+  }
+
+  function cacheDetectorEntry(index, entry) {
+    const previous = detectorCache.get(index);
+    if (previous) {
+      detectorCacheBytes -= previous.bytes || 0;
+      if (previous.bmp !== entry.bmp) closeDetectorBitmap(previous);
+      detectorCache.delete(index);
+    }
+    detectorCache.set(index, entry);
+    detectorCacheBytes += entry.bytes || 0;
+    while (
+      detectorCache.size > DETECTOR_CACHE_MAX_ITEMS ||
+      detectorCacheBytes > DETECTOR_CACHE_MAX_BYTES
+    ) {
+      const oldest = detectorCache.keys().next().value;
+      if (oldest === undefined) break;
+      const oldestEntry = detectorCache.get(oldest);
+      detectorCache.delete(oldest);
+      if (oldest === currentFrame) {
+        detectorCache.set(oldest, oldestEntry);
+        if (detectorCache.size === 1) break;
+        continue;
+      }
+      detectorCacheBytes -= oldestEntry.bytes || 0;
+      closeDetectorBitmap(oldestEntry);
+    }
+    return entry;
+  }
+
+  async function detectorBitmap(index) {
+    const cached = detectorCache.get(index);
+    if (cached) {
+      touchDetectorCache(index);
+      return cached;
+    }
+    const generation = detectorGeneration;
+    // Simulation detector frames are small enough that lossless PNG remains
+    // comfortably ahead of the requested playback rate. Keep every displayed
+    // and prefetched frame lossless; latency is controlled by coalescing and
+    // bounded prefetching rather than visibly lossy compression.
+    const format = 'png';
+    const requestKey = `${generation}:${index}:${format}`;
+    if (detectorRequests.has(requestKey)) return detectorRequests.get(requestKey);
+    const pending = (async () => {
+      const query = new URLSearchParams({
+        scale:displayScale.value,
+        cmap:colormap.value,
+        format,
+      });
+      const response = await fetch(
+        `/simulation/jobs/${encodeURIComponent(activeRunId)}/frame/${index}?${query}`,
+        {cache:'no-store'},
+      );
+      if (!response.ok) {
+        let message = `Could not load detector frame (${response.status})`;
+        try { message = (await response.json()).error || message; } catch (_) {}
+        throw new Error(message);
+      }
+      const bitmap = await decodeFrameBlob(await response.blob());
+      if (generation !== detectorGeneration) {
+        closeDetectorBitmap({bmp:bitmap});
+        return null;
+      }
+      const width = bitmap.naturalWidth || bitmap.width;
+      const height = bitmap.naturalHeight || bitmap.height;
+      return cacheDetectorEntry(index, {
+        bmp:bitmap,
+        bytes:width * height * 4,
+      });
+    })();
+    detectorRequests.set(requestKey, pending);
+    try {
+      return await pending;
+    } finally {
+      detectorRequests.delete(requestKey);
+    }
+  }
+
+  function pumpDetectorPrefetchQueue() {
+    while (detectorPrefetchActive < 3 && detectorPrefetchQueue.length) {
+      const item = detectorPrefetchQueue.shift();
+      const cached = detectorCache.get(item.index);
+      if (
+        item.generation !== detectorPrefetchGeneration ||
+        cached
+      ) {
+        detectorPrefetchQueued.delete(item.key);
+        continue;
+      }
+      detectorPrefetchActive += 1;
+      detectorBitmap(item.index)
+        .catch(() => {})
+        .finally(() => {
+          detectorPrefetchActive -= 1;
+          detectorPrefetchQueued.delete(item.key);
+          pumpDetectorPrefetchQueue();
+        });
+    }
+  }
+
+  function prefetchDetectorFrames() {
+    const frameCount = currentResult?.detector_image_shape?.[0] || 0;
+    if (!playing || frameCount < 2) return;
+    const count = Math.min(
+      frameCount - 1,
+      24,
+      Math.max(8, Math.ceil(playbackFps * 0.5)),
+    );
+    for (let offset = 1; offset <= count; offset++) {
+      const index = (currentFrame + offset) % frameCount;
+      const key = `${detectorPrefetchGeneration}:${index}`;
+      if (detectorCache.has(index) || detectorPrefetchQueued.has(key)) continue;
+      detectorPrefetchQueued.add(key);
+      detectorPrefetchQueue.push({index,key,generation:detectorPrefetchGeneration});
+    }
+    pumpDetectorPrefetchQueue();
+  }
+
+  function syncSimulationOverlay() {
+    if (!detectorCanvas.width) return;
+    const rect = detectorCanvas.getBoundingClientRect();
+    const stageRect = detectorStage.getBoundingClientRect();
+    measureCanvas.style.width = rect.width + 'px';
+    measureCanvas.style.height = rect.height + 'px';
+    measureCanvas.style.left = (rect.left - stageRect.left + detectorStage.scrollLeft) + 'px';
+    measureCanvas.style.top = (rect.top - stageRect.top + detectorStage.scrollTop) + 'px';
+  }
+
+  function simulationFitSize() {
+    const width = detectorCanvas.width, height = detectorCanvas.height;
+    if (!width || !height) return {width:0,height:0};
+    const availableWidth = detectorStage.clientWidth || detectorStage.getBoundingClientRect().width;
+    const availableHeight = detectorStage.clientHeight || detectorStage.getBoundingClientRect().height;
+    const fit = Math.min(availableWidth / width, availableHeight / height);
+    return {width:width * fit, height:height * fit};
+  }
+
+  function applySimulationZoom() {
+    if (!detectorCanvas.width) return;
+    const fit = simulationFitSize();
+    detectorCanvas.style.width = (fit.width * detectorZoom) + 'px';
+    detectorCanvas.style.height = (fit.height * detectorZoom) + 'px';
+    syncSimulationOverlay();
+    drawSimulationMeasurements();
+    document.getElementById('sim-zoom-label').textContent = `${Math.round(detectorZoom * 100)}%`;
+  }
+
+  function setSimulationZoom(value) {
+    detectorZoom = Math.max(0.25, Math.min(8, value));
+    applySimulationZoom();
+  }
+
+  function measurementRoi(item) {
+    return {
+      type:'line', x1:item.point1.x, y1:item.point1.y,
+      x2:item.point2.x, y2:item.point2.y, width:1,
+      color:item.color || '#22d3ee', label:item.label || 'M',
+    };
+  }
+
+  function drawSimulationMeasurements(target=measureCtx, includeDraft=true, clearTarget=true) {
+    if (!measureCanvas.width) return;
+    if (clearTarget) target.clearRect(0, 0, measureCanvas.width, measureCanvas.height);
+    measurements.filter(item => item.frame_index === currentFrame).forEach(item => {
+      const roi = measurementRoi(item);
+      drawRoi(target, roi);
+      drawResizeHandles(target, roi);
+    });
+    if (includeDraft && measureDraft) {
+      const roi = {
+        type:'line', x1:measureDraft.point1.x, y1:measureDraft.point1.y,
+        x2:measureDraft.point2.x, y2:measureDraft.point2.y,
+        width:1, color:'#fbbf24', label:'',
+      };
+      drawRoi(target, roi, true);
+    }
+  }
+
+  function renderMeasurementList() {
+    measurementList.replaceChildren();
+    clearMeasurementsBtn.disabled = !measurements.length;
+    if (!measurements.length) {
+      measureStatus.textContent = currentResult?.detector_image_shape
+        ? 'Drag a line between two points on the simulated screen.'
+        : 'Run or recall a detector simulation to measure it.';
+      return;
+    }
+    measurements.forEach((item, index) => {
+      const physical = item.physical || {};
+      const row = document.createElement('div');
+      row.className = 'sim-measurement';
+      const swatch = document.createElement('span');
+      swatch.style.cssText = `width:10px;height:10px;border-radius:50%;margin-top:2px;background:${item.color || '#22d3ee'};`;
+      const detail = document.createElement('div');
+      const spacing = Number.isFinite(physical.real_space_period_A)
+        ? ` · 2π/|Δq| ${physical.real_space_period_A.toPrecision(5)} Å` : '';
+      detail.textContent = `${item.label} · frame ${item.frame_index + 1} · ${Number(physical.distance_mm).toPrecision(5)} mm · |Δq| ${Number(physical.reciprocal_distance_A_inv).toPrecision(5)} Å⁻¹${spacing}`;
+      const remove = document.createElement('button');
+      remove.textContent = '✕'; remove.title = 'Delete measurement';
+      remove.addEventListener('click', async () => {
+        const removed = measurements.splice(index, 1)[0];
+        try { await saveMeasurements(); }
+        catch (error) {
+          measurements.splice(index, 0, removed);
+          renderMeasurementList(); drawSimulationMeasurements();
+          setStatus(`Could not delete measurement: ${error.message}`, '#f87171');
+        }
+      });
+      row.append(swatch, detail, remove);
+      measurementList.appendChild(row);
+    });
+    measureStatus.textContent = `${measurements.length} saved measurement${measurements.length === 1 ? '' : 's'} · drag an endpoint to refine.`;
+  }
+
+  async function saveMeasurements() {
+    if (!activeRunId) return;
+    const submitted = measurements.map(item => ({
+      id:item.id, label:item.label, color:item.color, frame_index:item.frame_index,
+      point1:item.point1, point2:item.point2,
+    }));
+    const payload = await responseJson(await fetch(
+      `/simulation/jobs/${encodeURIComponent(activeRunId)}/measurements`,
+      {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({measurements:submitted})},
+    ));
+    measurements = payload.measurements || [];
+    renderMeasurementList();
+    drawSimulationMeasurements();
+  }
+
+  async function loadMeasurements() {
+    if (!activeRunId) { measurements = []; return; }
+    const payload = await responseJson(await fetch(
+      `/simulation/jobs/${encodeURIComponent(activeRunId)}/measurements`,
+      {cache:'no-store'},
+    ));
+    measurements = payload.measurements || [];
+    renderMeasurementList();
+    drawSimulationMeasurements();
+  }
+
+  function selectDetectorFrame(index) {
+    const frameCount = currentResult?.detector_image_shape?.[0] || 0;
+    if (!frameCount) return 0;
+    index = Math.max(0, Math.min(frameCount - 1, Number(index) || 0));
+    currentFrame = index;
+    frameSlider.value = index;
+    const coordinates = currentResult.scan_coordinates || {};
+    const labels = Object.entries(coordinates).map(([name, values]) =>
+      `${name.replaceAll('_', ' ')} ${Number(values[index]).toPrecision(5)}`);
+    frameLabel.textContent = `${index + 1} / ${frameCount} · ${labels.join(' · ')}`;
+    measureCtx.clearRect(0, 0, measureCanvas.width, measureCanvas.height);
+    return index;
+  }
+
+  async function showDetectorFrame(index, {generation=null}={}) {
+    if (!activeRunId || !currentResult?.detector_image_shape) return;
+    index = selectDetectorFrame(index);
+    const displayGeneration = generation ?? ++detectorDisplayGeneration;
+    const entry = await detectorBitmap(index);
+    if (
+      !entry ||
+      displayGeneration !== detectorDisplayGeneration ||
+      index !== currentFrame
+    ) return false;
+    const bitmap = entry.bmp;
+    const width = bitmap.naturalWidth || bitmap.width;
+    const height = bitmap.naturalHeight || bitmap.height;
+    const dimensionsChanged = detectorCanvas.width !== width || detectorCanvas.height !== height;
+    if (dimensionsChanged) {
+      detectorCanvas.width = measureCanvas.width = width;
+      detectorCanvas.height = measureCanvas.height = height;
+    }
+    detectorCtx.drawImage(bitmap, 0, 0, width, height);
+    detectorCanvas.style.display = 'block'; detectorHint.style.display = 'none';
+    if (dimensionsChanged) applySimulationZoom();
+    else { syncSimulationOverlay(); drawSimulationMeasurements(); }
+    return true;
+  }
+
+  function queueDetectorScrub(index) {
+    if (!activeRunId || !currentResult?.detector_image_shape) return;
+    const generation = ++detectorDisplayGeneration;
+    index = selectDetectorFrame(index);
+    detectorScrubDesired = {index,generation};
+    if (detectorScrubBusy) return;
+    detectorScrubBusy = true;
+    (async () => {
+      while (detectorScrubDesired) {
+        const desired = detectorScrubDesired;
+        detectorScrubDesired = null;
+        try {
+          await showDetectorFrame(desired.index, desired);
+        } catch (error) {
+          if (desired.generation === detectorDisplayGeneration) {
+            setStatus(`Could not load detector frame: ${error.message}`, '#f87171');
+          }
+        }
+      }
+    })().finally(() => {
+      detectorScrubBusy = false;
+      // An input event can arrive between the loop condition and finally.
+      if (detectorScrubDesired) queueDetectorScrub(detectorScrubDesired.index);
+    });
+  }
+
+  async function loadResult(runId) {
+    stopSimulationPlayback();
+    clearDetectorCache();
+    const result = await responseJson(await fetch(`/simulation/jobs/${encodeURIComponent(runId)}/result`, { cache:'no-store' }));
+    activeRunId = runId; currentResult = result;
+    resultTitle.textContent = `Simulated Detector — ${result.simulation?.id || runId}`;
+    resultPath.textContent = result.saved_to || '';
+    resultPath.title = result.saved_to || '';
+    csvBtn.disabled = !result.intensities; npzBtn.disabled = false;
+    renderPlot(result);
+    const shape = result.detector_image_shape;
+    if (shape?.length === 3 && shape[0] > 0) {
+      frameSlider.disabled = false; frameSlider.min = 0; frameSlider.max = shape[0] - 1; frameSlider.value = 0;
+      playBtn.disabled = shape[0] < 2;
+      saveImageBtn.disabled = false; saveGifBtn.disabled = shape[0] < 2;
+      detectorZoom = 1;
+      await showDetectorFrame(0);
+      await loadMeasurements();
+    } else {
+      measurements = []; renderMeasurementList();
+      frameSlider.disabled = true; playBtn.disabled = true;
+      saveImageBtn.disabled = saveGifBtn.disabled = true;
+      detectorCanvas.style.display = 'none'; detectorHint.style.display = 'block';
+      detectorHint.textContent = 'This simulation contains rocking curves but no detector stack.';
+      frameLabel.textContent = 'No detector stack';
+    }
+  }
+
+  function stopSimulationPlayback() {
+    if (playing) {
+      playing = false;
+      playBtn.textContent = '▶'; playBtn.classList.remove('active');
+    }
+    if (playTimer !== null) cancelAnimationFrame(playTimer);
+    playTimer = null; playDeadline = 0; playBusy = false;
+    resetDetectorPrefetchQueue();
+  }
+
+  function simulationPlaybackLoop(now) {
+    if (!playing || !currentResult?.detector_image_shape) return;
+    const period = 1000 / playbackFps;
+    if (!playDeadline) playDeadline = now + period;
+    if (!playBusy && now >= playDeadline) {
+      const advance = Math.max(1, Math.floor((now - playDeadline) / period) + 1);
+      const next = (currentFrame + advance) % currentResult.detector_image_shape[0];
+      playDeadline += advance * period;
+      playBusy = true;
+      showDetectorFrame(next).catch(error => {
+        stopSimulationPlayback(); setStatus(`Playback error: ${error.message}`, '#f87171');
+      }).finally(() => {
+        playBusy = false;
+        prefetchDetectorFrames();
+      });
+    }
+    prefetchDetectorFrames();
+    playTimer = requestAnimationFrame(simulationPlaybackLoop);
+  }
+
+  function startSimulationPlayback() {
+    if (playing || !currentResult?.detector_image_shape || currentResult.detector_image_shape[0] < 2) return;
+    playing = true; playBtn.textContent = '⏸'; playBtn.classList.add('active');
+    playDeadline = performance.now() + 1000 / playbackFps;
+    resetDetectorPrefetchQueue();
+    prefetchDetectorFrames();
+    playTimer = requestAnimationFrame(simulationPlaybackLoop);
+  }
+
+  function simulationPoint(event) {
+    const rect = detectorCanvas.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(detectorCanvas.width, (event.clientX - rect.left) * detectorCanvas.width / rect.width)),
+      y: Math.max(0, Math.min(detectorCanvas.height, (event.clientY - rect.top) * detectorCanvas.height / rect.height)),
+    };
+  }
+
+  function simulationMeasurementHandle(point) {
+    const rect = detectorCanvas.getBoundingClientRect();
+    const threshold = 9 * detectorCanvas.width / Math.max(1, rect.width);
+    for (let index = measurements.length - 1; index >= 0; index--) {
+      const item = measurements[index];
+      if (item.frame_index !== currentFrame) continue;
+      if (Math.hypot(point.x - item.point1.x, point.y - item.point1.y) <= threshold) return {index, endpoint:'point1'};
+      if (Math.hypot(point.x - item.point2.x, point.y - item.point2.y) <= threshold) return {index, endpoint:'point2'};
+    }
+    return null;
+  }
+
+  detectorStage.addEventListener('pointerdown', event => {
+    if (!currentResult?.detector_image_shape || detectorCanvas.style.display === 'none') return;
+    stopSimulationPlayback();
+    if (measureMode === 'pan') {
+      panDrag = {x:event.clientX,y:event.clientY,left:detectorStage.scrollLeft,top:detectorStage.scrollTop};
+      detectorStage.style.cursor = 'grabbing';
+      detectorStage.setPointerCapture(event.pointerId);
+      return;
+    }
+    const point = simulationPoint(event);
+    const handle = simulationMeasurementHandle(point);
+    if (handle) {
+      measureEdit = {...handle, original:JSON.parse(JSON.stringify(measurements[handle.index]))};
+    } else {
+      measureDraft = {point1:point,point2:{...point}};
+    }
+    detectorStage.setPointerCapture(event.pointerId);
+    drawSimulationMeasurements();
+  });
+
+  detectorStage.addEventListener('pointermove', event => {
+    if (panDrag) {
+      detectorStage.scrollLeft = panDrag.left - (event.clientX - panDrag.x);
+      detectorStage.scrollTop = panDrag.top - (event.clientY - panDrag.y);
+      syncSimulationOverlay();
+      return;
+    }
+    if (!measureDraft && !measureEdit) return;
+    const point = simulationPoint(event);
+    if (measureDraft) measureDraft.point2 = point;
+    if (measureEdit) measurements[measureEdit.index][measureEdit.endpoint] = point;
+    drawSimulationMeasurements();
+  });
+
+  async function finishSimulationMeasure(event) {
+    if (panDrag) {
+      panDrag = null; detectorStage.style.cursor = measureMode === 'pan' ? 'grab' : 'crosshair'; return;
+    }
+    let addedMeasurement = false;
+    try {
+      if (measureDraft) {
+        const length = Math.hypot(
+          measureDraft.point2.x - measureDraft.point1.x,
+          measureDraft.point2.y - measureDraft.point1.y,
+        );
+        if (length >= 2) {
+          const number = measurements.length + 1;
+          measurements.push({
+            id:crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${number}`,
+            label:`M${number}`, color:ROI_COLORS[(number - 1) % ROI_COLORS.length],
+            frame_index:currentFrame, point1:measureDraft.point1, point2:measureDraft.point2,
+          });
+          addedMeasurement = true;
+          await saveMeasurements();
+        }
+      } else if (measureEdit) {
+        await saveMeasurements();
+      }
+    } catch (error) {
+      if (addedMeasurement) measurements.pop();
+      if (measureEdit?.original) measurements[measureEdit.index] = measureEdit.original;
+      setStatus(`Could not save measurement: ${error.message}`, '#f87171');
+    } finally {
+      measureDraft = null; measureEdit = null; drawSimulationMeasurements();
+    }
+  }
+  detectorStage.addEventListener('pointerup', finishSimulationMeasure);
+  detectorStage.addEventListener('pointercancel', finishSimulationMeasure);
+
+  measureModeBtn.addEventListener('click', () => {
+    measureMode = 'measure'; measureModeBtn.classList.add('active'); panModeBtn.classList.remove('active');
+    detectorStage.style.cursor = 'crosshair';
+  });
+  panModeBtn.addEventListener('click', () => {
+    measureMode = 'pan'; panModeBtn.classList.add('active'); measureModeBtn.classList.remove('active');
+    detectorStage.style.cursor = 'grab';
+  });
+  clearMeasurementsBtn.addEventListener('click', async () => {
+    const previousMeasurements = measurements;
+    measurements = [];
+    try { await saveMeasurements(); }
+    catch (error) {
+      measurements = previousMeasurements;
+      renderMeasurementList(); drawSimulationMeasurements();
+      setStatus(`Could not clear measurements: ${error.message}`, '#f87171');
+    }
+  });
+
+  async function saveCurrentSimulationImage() {
+    if (!activeRunId || !detectorCanvas.width) return;
+    const output = document.createElement('canvas');
+    output.width = detectorCanvas.width; output.height = detectorCanvas.height;
+    const context = output.getContext('2d');
+    context.drawImage(detectorCanvas, 0, 0);
+    drawSimulationMeasurements(context, false, false);
+    const blob = await canvasPngBlob(output);
+    const form = new FormData();
+    form.append('image', blob, `screen_frame_${currentFrame + 1}.png`);
+    setStatus('Saving simulated screen image…', '#7dd3fc');
+    const response = await fetch(
+      `/simulation/jobs/${encodeURIComponent(activeRunId)}/image/${currentFrame}`,
+      {method:'POST',body:form},
+    );
+    if (!response.ok) {
+      let message = `Image export failed (${response.status})`;
+      try { message = (await response.json()).error || message; } catch (_) {}
+      throw new Error(message);
+    }
+    downloadBlobCopy(await response.blob(), `screen_frame_${currentFrame + 1}.png`);
+    setStatus('Screen image saved with its visible measurements.', '#4ade80');
+  }
+
+  async function saveSimulationGif() {
+    if (!activeRunId) return;
+    setStatus('Rendering and saving detector GIF…', '#7dd3fc');
+    const query = new URLSearchParams({
+      fps:String(playbackFps), scale:displayScale.value, cmap:colormap.value, normalize:'global',
+    });
+    const response = await fetch(`/simulation/jobs/${encodeURIComponent(activeRunId)}/gif?${query}`);
+    if (!response.ok) {
+      let message = `GIF export failed (${response.status})`;
+      try { message = (await response.json()).error || message; } catch (_) {}
+      throw new Error(message);
+    }
+    downloadBlobCopy(await response.blob(), 'screen_animation.gif');
+    setStatus('Detector GIF saved in the simulation run and downloaded.', '#4ade80');
+  }
+
+  saveImageBtn.addEventListener('click', () => saveCurrentSimulationImage().catch(error => setStatus(error.message, '#f87171')));
+  saveGifBtn.addEventListener('click', () => saveSimulationGif().catch(error => setStatus(error.message, '#f87171')));
+
+  document.getElementById('sim-zoom-in').addEventListener('click', () => setSimulationZoom(detectorZoom * 1.25));
+  document.getElementById('sim-zoom-out').addEventListener('click', () => setSimulationZoom(detectorZoom / 1.25));
+  document.getElementById('sim-zoom-reset').addEventListener('click', () => setSimulationZoom(1));
+  detectorStage.addEventListener('wheel', event => {
+    if (!detectorCanvas.width || measureMode === 'pan' && !event.ctrlKey) return;
+    event.preventDefault(); setSimulationZoom(detectorZoom * (event.deltaY < 0 ? 1.1 : 1 / 1.1));
+  }, {passive:false});
+  new ResizeObserver(() => applySimulationZoom()).observe(detectorStage);
+
+  const simulationPanel = document.getElementById('sim-detector-panel');
+  const simulationTitlebar = document.getElementById('sim-detector-titlebar');
+  let simulationMinimized = false;
+  function toggleSimulationMinimized() {
+    if (!simulationMinimized) simulationPanel.dataset.savedHeight = simulationPanel.style.height;
+    simulationMinimized = !simulationMinimized;
+    simulationPanel.classList.toggle('minimized', simulationMinimized);
+    simulationPanel.style.height = simulationMinimized ? '36px' : (simulationPanel.dataset.savedHeight || '');
+    document.getElementById('sim-vwin-min').textContent = simulationMinimized ? '▢' : '─';
+  }
+  document.getElementById('sim-vwin-min').addEventListener('click', toggleSimulationMinimized);
+  simulationTitlebar.addEventListener('dblclick', event => {
+    if (!event.target.closest('.zoom-bar,.vwin-btn')) toggleSimulationMinimized();
+  });
+
+  function floatSimulationPanel() {
+    if (simulationPanel.classList.contains('floating')) return simulationPanel.getBoundingClientRect();
+    const rect = simulationPanel.getBoundingClientRect();
+    simulationPanel.classList.add('floating');
+    Object.assign(simulationPanel.style, {
+      left:`${rect.left}px`,top:`${rect.top}px`,width:`${rect.width}px`,height:`${rect.height}px`,
+    });
+    return rect;
+  }
+
+  simulationTitlebar.addEventListener('mousedown', event => {
+    if (simulationMinimized || event.target.closest('.zoom-bar,.vwin-btn')) return;
+    event.preventDefault();
+    const rect = floatSimulationPanel();
+    const startX = event.clientX, startY = event.clientY;
+    const move = moveEvent => {
+      simulationPanel.style.left = `${rect.left + moveEvent.clientX - startX}px`;
+      simulationPanel.style.top = `${rect.top + moveEvent.clientY - startY}px`;
+      syncSimulationOverlay();
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+    };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  });
+
+  document.getElementById('sim-viewer-resize-handle').addEventListener('mousedown', event => {
+    event.preventDefault(); event.stopPropagation();
+    const rect = floatSimulationPanel();
+    const startX = event.clientX, startY = event.clientY;
+    const move = moveEvent => {
+      simulationPanel.style.width = `${Math.max(320, rect.width + moveEvent.clientX - startX)}px`;
+      simulationPanel.style.height = `${Math.max(220, rect.height + moveEvent.clientY - startY)}px`;
+      applySimulationZoom();
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+    };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  });
+
+  adapterEl.addEventListener('change', renderAdapter);
+  runBtn.addEventListener('click', runSimulation);
+  cancelBtn.addEventListener('click', async () => {
+    if (!activeRunId) return;
+    try {
+      await responseJson(await fetch(`/simulation/jobs/${encodeURIComponent(activeRunId)}/cancel`, { method:'POST' }));
+      setStatus('Cancellation requested…', '#fbbf24');
+    } catch (error) { setStatus(error.message, '#f87171'); }
+  });
+  refreshBtn.addEventListener('click', loadRuns);
+  savedEl.addEventListener('change', () => { recallBtn.disabled = !savedEl.value; });
+  recallBtn.addEventListener('click', async () => {
+    if (!savedEl.value) return;
+    try { await loadResult(savedEl.value); setStatus('Saved simulation recalled.', '#4ade80'); }
+    catch (error) { setStatus(error.message, '#f87171'); }
+  });
+  firstBtn.addEventListener('click', () => { stopSimulationPlayback(); queueDetectorScrub(0); });
+  prevBtn.addEventListener('click', () => { stopSimulationPlayback(); queueDetectorScrub(currentFrame - 1); });
+  nextBtn.addEventListener('click', () => { stopSimulationPlayback(); queueDetectorScrub(currentFrame + 1); });
+  lastBtn.addEventListener('click', () => {
+    stopSimulationPlayback();
+    const count = currentResult?.detector_image_shape?.[0] || 1;
+    queueDetectorScrub(count - 1);
+  });
+  playBtn.addEventListener('click', () => {
+    if (playing) stopSimulationPlayback();
+    else startSimulationPlayback();
+  });
+  fpsSlider.addEventListener('input', () => {
+    playbackFps = Number(fpsSlider.value) || 7;
+    fpsValue.textContent = `${playbackFps.toFixed(0)} FPS`;
+    if (playing) { stopSimulationPlayback(); startSimulationPlayback(); }
+  });
+  frameSlider.addEventListener('input', () => {
+    stopSimulationPlayback();
+    queueDetectorScrub(Number(frameSlider.value));
+  });
+  async function refreshDetectorRendering() {
+    stopSimulationPlayback(); clearDetectorCache();
+    await showDetectorFrame(currentFrame);
+  }
+  displayScale.addEventListener('change', () => refreshDetectorRendering().catch(error => setStatus(error.message, '#f87171')));
+  colormap.addEventListener('change', () => refreshDetectorRendering().catch(error => setStatus(error.message, '#f87171')));
+  csvBtn.addEventListener('click', () => { if (activeRunId) window.location = `/simulation/jobs/${encodeURIComponent(activeRunId)}/csv`; });
+  npzBtn.addEventListener('click', () => { if (activeRunId) window.location = `/simulation/jobs/${encodeURIComponent(activeRunId)}/download`; });
+
+  const tab = document.querySelector('.tab[data-tab="simulation"]');
+  tab?.addEventListener('click', async event => {
+    if (event.target.classList.contains('tab-close') || initialized) return;
+    initialized = true;
+    try { await Promise.all([loadAdapters(), loadRuns()]); }
+    catch (error) { setStatus(error.message, '#f87171'); }
+  });
 })();
 
 // ═══════════════════════════════════════════════════════════════

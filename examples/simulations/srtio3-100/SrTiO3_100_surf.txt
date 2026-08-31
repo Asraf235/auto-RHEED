@@ -1,0 +1,4 @@
+0                                     ,NELMS
+1,1,0,0,1,0,0,0                 ,NSGS,msa,msb,nsa,nsb,dthick,DXS,DYS
+0                                     ,NATM
+1                                     ,WDOM
