@@ -49,6 +49,39 @@ Preserve these inference invariants:
 - Put new runtime dependencies in an appropriate optional extra in `pyproject.toml`, update `uv.lock`, and document the matching `uv sync --extra ...` command. Do not add a large AI stack to the default installation.
 - Preserve third-party scientific code provenance, pinned source revision, license text, and local-modification notes. Keep bundled third-party license files in the source tree and installed distribution.
 
+## Simulation adapters
+
+- Before adding or changing a simulation adapter, read `docs/SIMULATION_ADAPTERS.md` and the contracts in `src/rheed_core/simulation/`. The repository uses the spelling "adapter" in code and configuration.
+- Treat simulator families as optional adapters behind `SimulationAdapter`. Do not hard-code simulator imports, runtime objects, input formats, or adapter-specific conditionals into `RheedSession`, Flask routes, MCP tools, or the browser UI.
+- Built-in adapters live in `src/rheed_core/simulation/`. External adapters should register through the `auto_rheed.simulation_adapters` Python entry-point group rather than modifying core discovery code.
+- Keep heavyweight simulation runtimes optional and lazily imported inside an adapter's `load()` method. Importing `rheed_core` must not require torch-rheed, PyTorch, or another simulation package.
+- Keep simulation runs independent of the experimental frame stack and each process's `RheedSession`. Store completed runs through `rheed_core.simulation.store.SimulationStore` below the repository's ignored `data/simulations/` folder by default, while preserving configurable storage roots.
+
+A simulation adapter must subclass `SimulationAdapter` and provide:
+
+- `descriptor`: a `SimulationAdapterDescriptor` with a stable name, description, capabilities, required input names, default options, optional requirements, and an optional options schema for generic consumers.
+- `load(spec, device)`: initialize the runtime and return JSON-safe runtime and provenance metadata.
+- `simulate(inputs, context)`: consume the named local inputs and return the normalized result contract below while honoring the spec, progress, and cancellation state carried by `SimulationContext`.
+- `close()`: release resources when needed; it must be safe to call during cleanup after a successful, failed, or cancelled run.
+
+Use this normalized result contract unless a deliberate core schema extension is required:
+
+- `scan_coordinates`: one or more named one-dimensional arrays with equal length.
+- `beam_indices`: optional integer array shaped `(B, 2)`.
+- `intensities`: optional numeric array shaped `(N, B)`.
+- `detector_images`: optional numeric array shaped `(N, H, W)`.
+- `metadata`: optional JSON-safe scientific metadata. At least one of `intensities` or `detector_images` is required.
+
+Preserve these simulation invariants:
+
+- Keep scan-coordinate, intensity-row, and detector-frame indices exactly aligned. Detector stacks use native `(N, H, W)` coordinates and must not depend on browser zoom, display contrast, or canvas dimensions.
+- Keep units explicit. Record screen geometry in millimetres and beam energy in kiloelectronvolts where detector measurements require them; convert display coordinates to detector coordinates exactly once.
+- Record named input paths, sizes, and SHA-256 hashes together with adapter and runtime versions, requested revision, resolved device, solver and options, detector configuration, and other provenance needed to reproduce the run. Never commit generated results, large runtime artifacts, credentials, or private input data.
+- The built-in path is local simulation. Do not transmit structures, inputs, or results to a remote service unless a future feature explicitly requests, labels, and obtains authorization for remote processing.
+- Generate browser controls from the selected adapter descriptor and options schema. Adding another adapter must not require simulator-specific UI fields or route logic.
+- Put new runtime dependencies in an appropriate optional extra in `pyproject.toml`, update `uv.lock`, and document the matching `uv sync --extra ...` command. Do not add a large simulator stack to the default installation.
+- Preserve third-party scientific code provenance, pinned source revision, license text, and local-modification notes. Keep bundled third-party license files in the source tree and installed distribution.
+
 ## Scientific and coordinate invariants
 
 - Frame arrays use `(N, H, W)`; individual frames use `(H, W)`. Loaded analysis data is represented as `uint16` where practical, and timestamps are seconds zeroed to the first frame.
