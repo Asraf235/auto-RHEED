@@ -56,6 +56,24 @@ A separate FFT window can be opened per ROI to compare rates from different feat
 
 *(These correspond to Figures of the associated manuscript.)*
 
+### Agent-driven analysis through the MCP interface
+
+![Auto RHEED agent analysis: an MCP prompt driving ROI placement, strip profile, intensity, FFT growth rate, and d(t)/FWHM/coherence across a RHEED video](docs/mcp-agent-analysis.png)
+
+Every measurement in the app is also exposed as an MCP tool, so an AI agent can run the
+full analysis from a plain-language prompt, with no manual clicking. **(a)** The user asks
+the agent (using only the Auto RHEED MCP tools) to load a dataset, place ROIs on the
+specular and both first-order streaks, and report d(t), FWHM, coherence length, and the
+growth rate. **(b)** The agent executes the request as a sequence of tool calls
+(`load_rheed_file`, `derive_feature_rois`, `get_strip_profile`, `compute_roi_intensity_batch`,
+`compute_growth_rate_fft`, `track_streak_spacing`, ...), and reports the runtime and result of
+each step. **(c)** The agent-generated figures match the interactive workflow: automatically
+placed ROIs, the background-subtracted strip profile and detected peaks, per-ROI intensity
+transients, the FFT growth rate (f₀ = 0.1333 Hz), and d(t) with FWHM and coherence length
+tracked across every frame. This is the same analysis core driven programmatically, which is
+what lets Auto RHEED sit inside an autonomous growth loop. See the
+[associated preprint](https://arxiv.org/abs/2609.15922) for full detail.
+
 ### AI inference: unsupervised phase discovery and object detection
 
 ![Auto RHEED AI inference: PCA cluster embedding with changepoints, frame-similarity matrix, representative cluster frames, and YOLO segmentation](docs/ai-inference.png)
